@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vizventory Local Inventory</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/vizventory-logo.png" alt="Vizventory">
+        <div>
+          <p class="eyebrow">Picture-to-inventory workspace</p>
+          <h1>Organized Inventory</h1>
+        </div>
+      </div>
+      <div class="stats" aria-label="Inventory totals">
+        <span><strong id="availableCount">0</strong> In Stock</span>
+        <span><strong id="checkedOutCount">0</strong> Checked Out</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel entry-panel" aria-labelledby="addItemTitle">
+        <div class="section-title">
+          <h2 id="addItemTitle">Add Item</h2>
+          <button id="clearFormBtn" class="ghost" type="button">Clear</button>
+        </div>
+
+        <form id="itemForm">
+          <label>
+            Item name
+            <input id="title" name="title" autocomplete="off" placeholder="Laptop, drill set, artwork, equipment box">
+          </label>
+
+          <div class="grid-two">
+            <label>
+              Category
+              <select id="category" name="category">
+                <option value="">Select</option>
+                <option>Equipment</option>
+                <option>Tool</option>
+                <option>Electronics</option>
+                <option>Furniture</option>
+                <option>Supply</option>
+                <option>Document</option>
+                <option>Artwork</option>
+                <option>Part</option>
+                <option>Container</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label>
+              Size / Model
+              <input id="size" name="size" autocomplete="off" placeholder="Large, 15 inch, XR-200">
+            </label>
+          </div>
+
+          <div class="grid-two">
+            <label>
+              Color / Finish
+              <input id="color" name="color" autocomplete="off" placeholder="Black, silver, walnut">
+            </label>
+            <label>
+              Condition
+              <select id="condition" name="condition">
+                <option>Good</option>
+                <option>New with tags</option>
+                <option>Excellent</option>
+                <option>Needs service</option>
+                <option>Repair needed</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid-two">
+            <label>
+              Location
+              <input id="location" name="location" autocomplete="off" placeholder="Shelf A, Bin 4, Truck 2">
+            </label>
+            <label>
+              Tags
+              <input id="tags" name="tags" autocomplete="off" placeholder="field kit, office, fragile">
+            </label>
+          </div>
+
+          <label>
+            Photos
+            <input id="photos" name="photos" type="file" accept="image/*" capture="environment" multiple>
+          </label>
+          <div class="photo-actions">
+            <button id="connectPhoneBtn" class="primary" type="button">Connect Camera Device</button>
+            <button id="openLiveCameraBtn" class="ghost" type="button">Live Camera</button>
+            <button id="openPhotoPickerBtn" class="ghost" type="button">Choose Photo</button>
+            <button id="classifyPhotoBtn" class="ghost" type="button">AI Suggest</button>
+          </div>
+          <p id="aiSuggestNote" class="settings-note">Choose or take a picture, then let AI fill in the item details.</p>
+          <div id="photoPreview" class="photo-preview" aria-label="Selected item photos"></div>
+
+          <label>
+            Notes
+            <textarea id="notes" name="notes" rows="3" placeholder="Serial number, details, flaws, bundle contents"></textarea>
+          </label>
+
+          <button class="primary" type="submit">Save Item</button>
+        </form>
+      </section>
+
+      <section class="panel scanner-panel" aria-labelledby="scanTitle">
+        <div class="section-title">
+          <h2 id="scanTitle">Scan Out</h2>
+          <span class="status-pill" id="scannerStatus">Ready</span>
+        </div>
+        <div class="camera-settings" aria-label="Camera settings">
+          <div class="section-title compact-title">
+            <h3>Camera Settings</h3>
+            <button id="refreshCamerasBtn" class="ghost" type="button">Refresh</button>
+          </div>
+          <label>
+            Photo camera
+            <select id="photoCameraSelect">
+              <option value="">Default rear camera</option>
+            </select>
+          </label>
+          <label>
+            Scan-out camera
+            <select id="scannerCameraSelect">
+              <option value="">Default rear camera</option>
+            </select>
+          </label>
+          <p id="cameraSettingsNote" class="settings-note">Use Connect Camera Device for phone/tablet capture. The scan camera starts when you tap Start Scan.</p>
+        </div>
+        <div class="scanner-box">
+          <video id="scannerVideo" playsinline muted></video>
+          <div class="scanner-empty" id="scannerEmpty">Camera scan or type the item ID below</div>
+        </div>
+        <div class="scan-actions">
+          <button id="startScanBtn" class="primary" type="button">Start Scan</button>
+          <button id="stopScanBtn" class="ghost" type="button">Stop</button>
+        </div>
+        <div class="manual-scan">
+          <input id="manualId" autocomplete="off" placeholder="VIZ-2026-00001">
+          <button id="manualCheckoutBtn" type="button">Check Out</button>
+        </div>
+      </section>
+
+      <section class="inventory-section">
+        <div class="toolbar">
+          <div>
+            <p class="eyebrow">Inventory Keeper</p>
+            <h2>Items</h2>
+          </div>
+          <div class="filters">
+            <input id="searchInput" autocomplete="off" placeholder="Search size, color, tag, ID">
+            <select id="statusFilter">
+              <option value="Available">In Stock</option>
+              <option value="All">All</option>
+              <option value="Checked Out">Checked Out</option>
+              <option value="Removed">Removed</option>
+            </select>
+            <button id="printVisibleBtn" type="button">Print Labels</button>
+          </div>
+        </div>
+        <div id="inventoryList" class="inventory-list"></div>
+      </section>
+    </main>
+
+    <template id="itemTemplate">
+      <article class="item-card">
+        <img class="item-photo" alt="">
+        <div class="item-main">
+          <div class="item-heading">
+            <div>
+              <h3></h3>
+              <p class="item-meta"></p>
+            </div>
+            <span class="item-status"></span>
+          </div>
+          <p class="item-notes"></p>
+          <div class="tag-row"></div>
+          <div class="item-actions">
+            <button class="print-btn" type="button">Print Tag</button>
+            <button class="checkout-btn" type="button">Check Out</button>
+          </div>
+        </div>
+        <div class="barcode-wrap">
+          <svg class="barcode" role="img"></svg>
+          <strong class="item-id"></strong>
+        </div>
+      </article>
+    </template>
+
+    <dialog id="cameraDialog" class="camera-dialog">
+      <div class="camera-header">
+        <h2>Item Camera</h2>
+        <button id="closeCameraBtn" class="ghost" type="button">Close</button>
+      </div>
+      <div class="camera-dialog-settings">
+        <label>
+          Camera
+          <select id="dialogPhotoCameraSelect">
+            <option value="">Default rear camera</option>
+          </select>
+        </label>
+        <div class="camera-dialog-actions">
+          <button id="dialogRefreshCamerasBtn" class="ghost" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="camera-view">
+        <video id="photoVideo" playsinline muted></video>
+        <div class="camera-empty" id="photoCameraEmpty">Select a camera, then capture.</div>
+      </div>
+      <div class="camera-actions">
+        <button id="capturePhotoBtn" class="primary" type="button">Capture Photo</button>
+      </div>
+    </dialog>
+
+    <dialog id="phoneDialog" class="phone-dialog">
+      <div class="camera-header">
+        <h2>Connect Camera Device</h2>
+        <button id="closePhoneDialogBtn" class="ghost" type="button">Close</button>
+      </div>
+      <div class="phone-connect">
+        <p id="phoneConnectStatus" class="settings-note">Starting camera device session...</p>
+        <div id="cameraQrCode" class="camera-qr" aria-label="Camera device QR code"></div>
+        <label>
+          Short camera device link
+          <input id="phoneConnectUrl" readonly>
+        </label>
+        <a id="openCameraDeviceLinkBtn" class="primary link-button" href="#" target="_blank" rel="noopener">Open Camera Device</a>
+        <div class="phone-actions">
+          <button id="copyPhoneLinkBtn" class="ghost" type="button">Copy Link</button>
+          <button id="refreshPhoneSessionBtn" class="ghost" type="button">New Session</button>
+        </div>
+        <p class="settings-note">Scan the QR with the camera device. If scanning is unavailable, use the short link while both devices are on the same Wi-Fi.</p>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

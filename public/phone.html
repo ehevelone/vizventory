@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vizventory Phone Capture</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="phone-page">
+    <main class="phone-shell">
+      <section class="panel phone-panel">
+        <img class="phone-logo" src="assets/vizventory-logo.png" alt="Vizventory">
+        <p class="eyebrow">Picture-to-inventory capture</p>
+        <h1>Phone Capture</h1>
+        <p id="phoneStatus" class="settings-note">Choose the camera, take a picture, then send it to the desktop.</p>
+
+        <label>
+          Take item picture
+          <input id="phonePhotoInput" type="file" accept="image/*" capture="environment">
+        </label>
+
+        <div id="phonePreview" class="phone-preview"></div>
+
+        <div class="phone-actions">
+          <button id="sendPhonePhotoBtn" class="primary" type="button">Send to Desktop</button>
+          <button id="chooseAnotherPhonePhotoBtn" class="ghost" type="button">Choose Another</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="phone.js"></script>
+  </body>
+</html>
