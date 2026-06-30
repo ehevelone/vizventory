@@ -10,6 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const VizventoryApp());
 
+const hostedVizventoryUrl = String.fromEnvironment(
+  'VIZVENTORY_SITE_URL',
+  defaultValue: 'https://vizventory.netlify.app',
+);
+
 class VizventoryApp extends StatelessWidget {
   const VizventoryApp({super.key});
 
@@ -245,8 +250,8 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 
   final _serverController = TextEditingController();
   int _tabIndex = 0;
-  String _serverBase = '';
-  String _message = 'Connect to a Vizventory desktop to begin.';
+  String _serverBase = hostedVizventoryUrl;
+  String _message = 'Sign in to continue.';
   String _accessToken = '';
   String _refreshToken = '';
   String _organizationId = '';
@@ -267,8 +272,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final server = prefs.getString(_serverKey) ?? '';
-    final recent = prefs.getStringList(_recentDevicesKey) ?? [];
+    final savedServer = prefs.getString(_serverKey) ?? '';
+    final server = savedServer.startsWith('https://') && !savedServer.contains('192.168.') ? savedServer : hostedVizventoryUrl;
+    final recent = (prefs.getStringList(_recentDevicesKey) ?? []).where((item) => item.startsWith('https://') && !item.contains('192.168.')).toList();
     final accessToken = prefs.getString(_authTokenKey) ?? '';
     final refreshToken = prefs.getString(_authRefreshKey) ?? '';
     final organizationId = prefs.getString(_authOrgKey) ?? '';
@@ -282,11 +288,7 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       _refreshToken = refreshToken;
       _organizationId = organizationId;
       _email = email;
-      _message = server.isEmpty
-          ? _message
-          : accessToken.isEmpty
-          ? 'Connected to ${_friendlyServer(server)}. Sign in to continue.'
-          : 'Signed in as $email.';
+      _message = accessToken.isEmpty ? 'Using hosted Vizventory. Sign in to continue.' : 'Signed in as $email.';
     });
   }
 
@@ -317,15 +319,10 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   }
 
   Future<void> _authenticate({
-    required String serverBase,
     required String email,
     required String password,
   }) async {
-    final normalized = _normalizeServer(serverBase);
-    if (normalized.isEmpty) {
-      _showMessage('Enter your Vizventory site URL first.');
-      return;
-    }
+    final normalized = _serverBase.isEmpty ? hostedVizventoryUrl : _serverBase;
     final response = await http
         .post(
           Uri.parse('$normalized/api/auth/login'),
@@ -476,11 +473,7 @@ class _VizventoryHomeState extends State<VizventoryHome> {
             child: signedIn
                 ? pages[_tabIndex]
                 : AuthScreen(
-                    serverController: _serverController,
-                    recentServers: _recentServers,
                     onAuthenticate: _authenticate,
-                    onSaveServer: _saveServer,
-                    friendlyServer: _friendlyServer,
                   ),
           ),
         ],
@@ -504,22 +497,13 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
     super.key,
-    required this.serverController,
-    required this.recentServers,
     required this.onAuthenticate,
-    required this.onSaveServer,
-    required this.friendlyServer,
   });
 
-  final TextEditingController serverController;
-  final List<String> recentServers;
   final Future<void> Function({
-    required String serverBase,
     required String email,
     required String password,
   }) onAuthenticate;
-  final ValueChanged<String> onSaveServer;
-  final String Function(String) friendlyServer;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -545,7 +529,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
     try {
       await widget.onAuthenticate(
-        serverBase: widget.serverController.text,
         email: _email.text,
         password: _password.text,
       );
@@ -567,17 +550,6 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 8),
         Text(_message, style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 16),
-        TextField(
-          controller: widget.serverController,
-          decoration: const InputDecoration(labelText: 'Vizventory site URL', hintText: 'https://your-site.netlify.app'),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => widget.onSaveServer(widget.serverController.text),
-          icon: const Icon(Icons.link),
-          label: const Text('Save Site URL'),
-        ),
-        const SizedBox(height: 14),
         TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
         const SizedBox(height: 10),
         TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
@@ -589,17 +561,6 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
         const SizedBox(height: 10),
         const Text('Need an account? Register on the Vizventory website, then come back and sign in here.'),
-        if (widget.recentServers.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Text('Remembered sites', style: Theme.of(context).textTheme.titleMedium),
-          for (final server in widget.recentServers)
-            ListTile(
-              leading: const Icon(Icons.cloud_outlined),
-              title: Text(widget.friendlyServer(server)),
-              subtitle: Text(server),
-              onTap: () => widget.serverController.text = server,
-            ),
-        ],
       ],
     );
   }
@@ -1259,20 +1220,20 @@ class SettingsScreen extends StatelessWidget {
         TextField(
           controller: serverController,
           decoration: const InputDecoration(
-            labelText: 'Desktop server',
-            hintText: 'http://192.168.1.20:4174',
+            labelText: 'Hosted site',
+            hintText: 'https://vizventory.netlify.app',
           ),
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: () => onSaveServer(serverController.text),
           icon: const Icon(Icons.link),
-          label: const Text('Save Server'),
+          label: const Text('Save Hosted Site'),
         ),
         if (recentServers.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text(
-            'Remembered desktops',
+            'Remembered hosted sites',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
