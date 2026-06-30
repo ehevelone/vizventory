@@ -234,11 +234,19 @@ class VizventoryHome extends StatefulWidget {
 class _VizventoryHomeState extends State<VizventoryHome> {
   static const _serverKey = 'vizventoryServerBase';
   static const _recentDevicesKey = 'vizventoryRecentDesktops';
+  static const _authTokenKey = 'vizventoryAccessToken';
+  static const _authRefreshKey = 'vizventoryRefreshToken';
+  static const _authOrgKey = 'vizventoryOrganizationId';
+  static const _authEmailKey = 'vizventoryEmail';
 
   final _serverController = TextEditingController();
   int _tabIndex = 0;
   String _serverBase = '';
   String _message = 'Connect to a Vizventory desktop to begin.';
+  String _accessToken = '';
+  String _refreshToken = '';
+  String _organizationId = '';
+  String _email = '';
   List<String> _recentServers = [];
 
   @override
@@ -257,14 +265,24 @@ class _VizventoryHomeState extends State<VizventoryHome> {
     final prefs = await SharedPreferences.getInstance();
     final server = prefs.getString(_serverKey) ?? '';
     final recent = prefs.getStringList(_recentDevicesKey) ?? [];
+    final accessToken = prefs.getString(_authTokenKey) ?? '';
+    final refreshToken = prefs.getString(_authRefreshKey) ?? '';
+    final organizationId = prefs.getString(_authOrgKey) ?? '';
+    final email = prefs.getString(_authEmailKey) ?? '';
     if (!mounted) return;
     setState(() {
       _serverBase = server;
       _serverController.text = server;
       _recentServers = recent;
+      _accessToken = accessToken;
+      _refreshToken = refreshToken;
+      _organizationId = organizationId;
+      _email = email;
       _message = server.isEmpty
           ? _message
-          : 'Connected to ${_friendlyServer(server)}.';
+          : accessToken.isEmpty
+          ? 'Connected to ${_friendlyServer(server)}. Sign in to continue.'
+          : 'Signed in as $email.';
     });
   }
 
@@ -284,6 +302,92 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       _serverController.text = normalized;
       _recentServers = recent;
       _message = 'Connected to ${_friendlyServer(normalized)}.';
+    });
+  }
+
+  Map<String, String> get _authHeaders {
+    final headers = <String, String>{};
+    if (_accessToken.isNotEmpty) headers['Authorization'] = 'Bearer $_accessToken';
+    if (_organizationId.isNotEmpty) headers['X-Vizventory-Organization-Id'] = _organizationId;
+    return headers;
+  }
+
+  Future<void> _authenticate({
+    required bool signup,
+    required String serverBase,
+    required String email,
+    required String password,
+    required String fullName,
+    required String organizationName,
+    required String organizationType,
+  }) async {
+    final normalized = _normalizeServer(serverBase);
+    if (normalized.isEmpty) {
+      _showMessage('Enter your Vizventory site URL first.');
+      return;
+    }
+    final response = await http
+        .post(
+          Uri.parse('$normalized/api/auth/${signup ? 'signup' : 'login'}'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': email,
+            'password': password,
+            'fullName': fullName,
+            'organizationName': organizationName,
+            'organizationType': organizationType,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(data['error'] ?? 'Sign in failed');
+    }
+    final token = data['accessToken']?.toString() ?? '';
+    if (token.isEmpty) {
+      _showMessage('Account created. Check your email if confirmation is required, then sign in.');
+      return;
+    }
+
+    final recent = [
+      normalized,
+      ..._recentServers.where((item) => item != normalized),
+    ].take(5).toList();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverKey, normalized);
+    await prefs.setStringList(_recentDevicesKey, recent);
+    await prefs.setString(_authTokenKey, token);
+    await prefs.setString(_authRefreshKey, data['refreshToken']?.toString() ?? '');
+    await prefs.setString(_authOrgKey, data['organizationId']?.toString() ?? '');
+    await prefs.setString(_authEmailKey, data['user']?['email']?.toString() ?? email);
+    if (!mounted) return;
+    setState(() {
+      _serverBase = normalized;
+      _serverController.text = normalized;
+      _recentServers = recent;
+      _accessToken = token;
+      _refreshToken = data['refreshToken']?.toString() ?? '';
+      _organizationId = data['organizationId']?.toString() ?? '';
+      _email = data['user']?['email']?.toString() ?? email;
+      _message = 'Signed in as $_email.';
+      _tabIndex = 0;
+    });
+  }
+
+  Future<void> _signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_authTokenKey);
+    await prefs.remove(_authRefreshKey);
+    await prefs.remove(_authOrgKey);
+    await prefs.remove(_authEmailKey);
+    if (!mounted) return;
+    setState(() {
+      _accessToken = '';
+      _refreshToken = '';
+      _organizationId = '';
+      _email = '';
+      _message = 'Signed out.';
+      _tabIndex = 0;
     });
   }
 
@@ -331,16 +435,19 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   @override
   Widget build(BuildContext context) {
     final connected = _serverBase.isNotEmpty;
+    final signedIn = _accessToken.isNotEmpty;
     final pages = [
-      InventoryScreen(serverBase: _serverBase, onMessage: _showMessage),
-      AddItemScreen(serverBase: _serverBase, onMessage: _showMessage),
-      ScanScreen(serverBase: _serverBase, onMessage: _showMessage),
+      InventoryScreen(serverBase: _serverBase, authHeaders: _authHeaders, onMessage: _showMessage),
+      AddItemScreen(serverBase: _serverBase, authHeaders: _authHeaders, onMessage: _showMessage),
+      ScanScreen(serverBase: _serverBase, authHeaders: _authHeaders, onMessage: _showMessage),
       SettingsScreen(
         serverBase: _serverBase,
         serverController: _serverController,
         recentServers: _recentServers,
+        email: _email,
         onSaveServer: _saveServer,
         onScanQr: _scanDesktopQr,
+        onSignOut: _signOut,
         onMessage: _showMessage,
         friendlyServer: _friendlyServer,
       ),
@@ -371,31 +478,167 @@ class _VizventoryHomeState extends State<VizventoryHome> {
                 title: Text(_message),
               ),
             ),
-          Expanded(child: pages[_tabIndex]),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tabIndex,
-        onDestinationSelected: (index) => setState(() => _tabIndex = index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            label: 'Inventory',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.add_a_photo_outlined),
-            label: 'Add',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.qr_code_scanner),
-            label: 'Scan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            label: 'Settings',
+          Expanded(
+            child: signedIn
+                ? pages[_tabIndex]
+                : AuthScreen(
+                    serverController: _serverController,
+                    recentServers: _recentServers,
+                    onAuthenticate: _authenticate,
+                    onSaveServer: _saveServer,
+                    friendlyServer: _friendlyServer,
+                  ),
           ),
         ],
       ),
+      bottomNavigationBar: signedIn
+          ? NavigationBar(
+              selectedIndex: _tabIndex,
+              onDestinationSelected: (index) => setState(() => _tabIndex = index),
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.inventory_2_outlined), label: 'Inventory'),
+                NavigationDestination(icon: Icon(Icons.add_a_photo_outlined), label: 'Add'),
+                NavigationDestination(icon: Icon(Icons.qr_code_scanner), label: 'Scan'),
+                NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+              ],
+            )
+          : null,
+    );
+  }
+}
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({
+    super.key,
+    required this.serverController,
+    required this.recentServers,
+    required this.onAuthenticate,
+    required this.onSaveServer,
+    required this.friendlyServer,
+  });
+
+  final TextEditingController serverController;
+  final List<String> recentServers;
+  final Future<void> Function({
+    required bool signup,
+    required String serverBase,
+    required String email,
+    required String password,
+    required String fullName,
+    required String organizationName,
+    required String organizationType,
+  }) onAuthenticate;
+  final ValueChanged<String> onSaveServer;
+  final String Function(String) friendlyServer;
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _name = TextEditingController();
+  final _organization = TextEditingController();
+  String _organizationType = 'Personal';
+  bool _signup = false;
+  bool _busy = false;
+  String _message = 'Sign in to manage your inventory.';
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    _name.dispose();
+    _organization.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _busy = true;
+      _message = _signup ? 'Creating account...' : 'Signing in...';
+    });
+    try {
+      await widget.onAuthenticate(
+        signup: _signup,
+        serverBase: widget.serverController.text,
+        email: _email.text,
+        password: _password.text,
+        fullName: _name.text,
+        organizationName: _organization.text,
+        organizationType: _organizationType,
+      );
+    } catch (error) {
+      if (mounted) setState(() => _message = friendlyApiError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Image.asset('assets/vizventory-logo.png', height: 96, fit: BoxFit.contain),
+        const SizedBox(height: 16),
+        Text(_signup ? 'Create your Vizventory account' : 'Sign in to Vizventory', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 8),
+        Text(_message, style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 16),
+        TextField(
+          controller: widget.serverController,
+          decoration: const InputDecoration(labelText: 'Vizventory site URL', hintText: 'https://your-site.netlify.app'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => widget.onSaveServer(widget.serverController.text),
+          icon: const Icon(Icons.link),
+          label: const Text('Save Site URL'),
+        ),
+        const SizedBox(height: 14),
+        TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+        const SizedBox(height: 10),
+        TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+        if (_signup) ...[
+          const SizedBox(height: 10),
+          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Your name')),
+          const SizedBox(height: 10),
+          TextField(controller: _organization, decoration: const InputDecoration(labelText: 'Organization name')),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: _organizationType,
+            decoration: const InputDecoration(labelText: 'Organization type'),
+            items: const ['Personal', 'Nonprofit', 'Business', 'Warehouse', 'Reseller']
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                .toList(),
+            onChanged: (value) => setState(() => _organizationType = value ?? 'Personal'),
+          ),
+        ],
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: _busy ? null : _submit,
+          icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
+          label: Text(_busy ? 'Please wait...' : _signup ? 'Create Account' : 'Sign In'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton(
+          onPressed: _busy ? null : () => setState(() => _signup = !_signup),
+          child: Text(_signup ? 'I Already Have an Account' : 'Create Account'),
+        ),
+        if (widget.recentServers.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('Remembered sites', style: Theme.of(context).textTheme.titleMedium),
+          for (final server in widget.recentServers)
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: Text(widget.friendlyServer(server)),
+              subtitle: Text(server),
+              onTap: () => widget.serverController.text = server,
+            ),
+        ],
+      ],
     );
   }
 }
@@ -404,9 +647,11 @@ class InventoryScreen extends StatefulWidget {
   const InventoryScreen({
     super.key,
     required this.serverBase,
+    required this.authHeaders,
     required this.onMessage,
   });
   final String serverBase;
+  final Map<String, String> authHeaders;
   final ValueChanged<String> onMessage;
 
   @override
@@ -428,7 +673,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void didUpdateWidget(covariant InventoryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.serverBase != widget.serverBase) _loadItems();
+    if (oldWidget.serverBase != widget.serverBase || oldWidget.authHeaders['Authorization'] != widget.authHeaders['Authorization']) _loadItems();
   }
 
   @override
@@ -442,7 +687,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     setState(() => _loading = true);
     try {
       final response = await http
-          .get(Uri.parse('${widget.serverBase}/api/items'))
+          .get(Uri.parse('${widget.serverBase}/api/items'), headers: widget.authHeaders)
           .timeout(const Duration(seconds: 30));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200)
@@ -520,9 +765,11 @@ class AddItemScreen extends StatefulWidget {
   const AddItemScreen({
     super.key,
     required this.serverBase,
+    required this.authHeaders,
     required this.onMessage,
   });
   final String serverBase;
+  final Map<String, String> authHeaders;
   final ValueChanged<String> onMessage;
 
   @override
@@ -555,7 +802,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   void didUpdateWidget(covariant AddItemScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.serverBase != widget.serverBase) _loadCategories();
+    if (oldWidget.serverBase != widget.serverBase || oldWidget.authHeaders['Authorization'] != widget.authHeaders['Authorization']) _loadCategories();
   }
 
   @override
@@ -584,7 +831,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
     try {
       final response = await http
-          .get(Uri.parse('${widget.serverBase}/api/categories'))
+          .get(Uri.parse('${widget.serverBase}/api/categories'), headers: widget.authHeaders)
           .timeout(const Duration(seconds: 30));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode != 200)
@@ -679,7 +926,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       final response = await http
           .post(
             Uri.parse('${widget.serverBase}/api/items'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...widget.authHeaders},
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 45));
@@ -719,7 +966,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       final response = await http
           .post(
             Uri.parse('${widget.serverBase}/api/classify-photo'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...widget.authHeaders},
             body: jsonEncode({
               'photoData':
                   'data:$_photoMime;base64,${base64Encode(_photoBytes!)}',
@@ -888,9 +1135,11 @@ class ScanScreen extends StatefulWidget {
   const ScanScreen({
     super.key,
     required this.serverBase,
+    required this.authHeaders,
     required this.onMessage,
   });
   final String serverBase;
+  final Map<String, String> authHeaders;
   final ValueChanged<String> onMessage;
 
   @override
@@ -927,7 +1176,7 @@ class _ScanScreenState extends State<ScanScreen> {
             Uri.parse(
               '${widget.serverBase}/api/items/${Uri.encodeComponent(itemId)}/status',
             ),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...widget.authHeaders},
             body: jsonEncode({
               'status': status,
               'note': 'Updated from mobile app',
@@ -1001,8 +1250,10 @@ class SettingsScreen extends StatelessWidget {
     required this.serverBase,
     required this.serverController,
     required this.recentServers,
+    required this.email,
     required this.onSaveServer,
     required this.onScanQr,
+    required this.onSignOut,
     required this.onMessage,
     required this.friendlyServer,
   });
@@ -1010,8 +1261,10 @@ class SettingsScreen extends StatelessWidget {
   final String serverBase;
   final TextEditingController serverController;
   final List<String> recentServers;
+  final String email;
   final ValueChanged<String> onSaveServer;
   final VoidCallback onScanQr;
+  final VoidCallback onSignOut;
   final ValueChanged<String> onMessage;
   final String Function(String) friendlyServer;
 
@@ -1026,6 +1279,15 @@ class SettingsScreen extends StatelessWidget {
           fit: BoxFit.contain,
         ),
         const SizedBox(height: 16),
+        if (email.isNotEmpty) ...[
+          ListTile(
+            leading: const Icon(Icons.account_circle_outlined),
+            title: const Text('Signed in'),
+            subtitle: Text(email),
+          ),
+          OutlinedButton.icon(onPressed: onSignOut, icon: const Icon(Icons.logout), label: const Text('Sign Out')),
+          const SizedBox(height: 16),
+        ],
         FilledButton.icon(
           onPressed: onScanQr,
           icon: const Icon(Icons.qr_code_scanner),

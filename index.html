@@ -19,9 +19,51 @@
         <span><strong id="availableCount">0</strong> In Stock</span>
         <span><strong id="checkedOutCount">0</strong> Checked Out</span>
       </div>
+      <div class="account-bar" id="accountBar" hidden>
+        <span id="accountEmail"></span>
+        <button id="signOutBtn" class="ghost" type="button">Sign Out</button>
+      </div>
     </header>
 
-    <main class="layout">
+    <section id="authView" class="auth-view" hidden>
+      <form id="authForm" class="auth-card">
+        <img src="assets/vizventory-logo.png" alt="Vizventory">
+        <h2 id="authTitle">Sign in to Vizventory</h2>
+        <p id="authMessage" class="settings-note">Use your Vizventory account to manage your inventory.</p>
+        <label>
+          Email
+          <input id="authEmail" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          Password
+          <input id="authPassword" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <div id="signupFields" class="signup-fields" hidden>
+          <label>
+            Your name
+            <input id="authName" name="fullName" autocomplete="name" placeholder="Jane Smith">
+          </label>
+          <label>
+            Organization name
+            <input id="authOrganization" name="organizationName" autocomplete="organization" placeholder="My Inventory">
+          </label>
+          <label>
+            Organization type
+            <select id="authOrganizationType" name="organizationType">
+              <option>Personal</option>
+              <option>Nonprofit</option>
+              <option>Business</option>
+              <option>Warehouse</option>
+              <option>Reseller</option>
+            </select>
+          </label>
+        </div>
+        <button id="authSubmitBtn" class="primary" type="submit">Sign In</button>
+        <button id="toggleAuthModeBtn" class="ghost" type="button">Create Account</button>
+      </form>
+    </section>
+
+    <main id="appView" class="layout" hidden>
       <section class="panel entry-panel" aria-labelledby="addItemTitle">
         <div class="section-title">
           <h2 id="addItemTitle">Add Item</h2>

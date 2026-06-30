@@ -53,7 +53,7 @@ const DEFAULT_CATEGORIES = [
 
 const BASE_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Vizventory-Organization-Id",
   "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS"
 };
 
@@ -137,6 +137,14 @@ function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function supabasePublicKey() {
+  return process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+}
+
+function isAuthConfigured() {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && supabasePublicKey());
+}
+
 function supabaseBaseUrl() {
   return String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 }
@@ -163,6 +171,112 @@ async function supabaseRequest(pathname, options = {}) {
     throw error;
   }
   return data;
+}
+
+async function supabaseAuthRequest(pathname, options = {}) {
+  const response = await fetch(`${supabaseBaseUrl()}${pathname}`, {
+    ...options,
+    headers: {
+      apikey: supabasePublicKey(),
+      ...(options.headers || {})
+    }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const error = new Error(data?.msg || data?.message || data?.error_description || data?.error || "Authentication failed");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function bearerToken(event) {
+  const header = event.headers?.authorization || event.headers?.Authorization || "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match ? match[1].trim() : "";
+}
+
+async function userFromToken(token) {
+  if (!token) return null;
+  return supabaseAuthRequest("/auth/v1/user", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+async function ensureUserWorkspace(user, input = {}) {
+  if (!user?.id) throw Object.assign(new Error("Login required"), { status: 401 });
+  const existing = await supabaseRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,email,full_name,default_organization_id`);
+  if (existing?.[0]?.default_organization_id) {
+    const memberships = await supabaseRequest(`/rest/v1/organization_memberships?user_id=eq.${encodeURIComponent(user.id)}&select=organization_id,role`);
+    return {
+      user,
+      profile: existing[0],
+      organizationId: existing[0].default_organization_id,
+      memberships: memberships || []
+    };
+  }
+
+  const organizationName = String(input.organizationName || input.organization_name || "").trim() || "My Inventory";
+  const organizationType = String(input.organizationType || input.organization_type || "Personal").trim() || "Personal";
+  const organizations = await supabaseRequest("/rest/v1/organizations?select=id,name,organization_type", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify({ name: organizationName, organization_type: organizationType })
+  });
+  const organization = organizations?.[0];
+  if (!organization?.id) throw Object.assign(new Error("Could not create organization"), { status: 500 });
+
+  const profile = {
+    id: user.id,
+    email: user.email || "",
+    full_name: String(input.fullName || input.full_name || user.user_metadata?.full_name || "").trim(),
+    default_organization_id: organization.id
+  };
+  await supabaseRequest("/rest/v1/profiles", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify(profile)
+  });
+  await supabaseRequest("/rest/v1/organization_memberships", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify({ organization_id: organization.id, user_id: user.id, role: "admin" })
+  });
+
+  return {
+    user,
+    profile,
+    organizationId: organization.id,
+    memberships: [{ organization_id: organization.id, role: "admin" }]
+  };
+}
+
+async function authContext(event) {
+  if (!isAuthConfigured()) {
+    return { user: null, organizationId: organizationIdFromEvent(event), memberships: [] };
+  }
+  const user = await userFromToken(bearerToken(event));
+  if (!user) throw Object.assign(new Error("Login required"), { status: 401 });
+  const context = await ensureUserWorkspace(user);
+  const requestedOrganizationId = organizationIdFromEvent(event);
+  const memberships = context.memberships || [];
+  if (requestedOrganizationId !== DEFAULT_ORGANIZATION_ID && memberships.some((membership) => membership.organization_id === requestedOrganizationId)) {
+    return { ...context, organizationId: requestedOrganizationId };
+  }
+  return context;
 }
 
 function itemPhotoUrl(storagePath) {
@@ -523,8 +637,12 @@ exports.handler = async (event) => {
     const pathname = routePath(event);
     const params = event.queryStringParameters || {};
     const useSupabase = isSupabaseConfigured();
-    const organizationId = organizationIdFromEvent(event);
     const db = useSupabase ? null : readDb();
+    let cachedAuthContext = null;
+    const requireAuth = async () => {
+      cachedAuthContext = cachedAuthContext || await authContext(event);
+      return cachedAuthContext;
+    };
 
     const photoMatch = /^\/api\/photos\/(.+)$/.exec(pathname);
     if (photoMatch && method === "GET") {
@@ -555,6 +673,66 @@ exports.handler = async (event) => {
         type: "png"
       });
       return binary(200, png, "image/png");
+    }
+
+    if (method === "POST" && pathname === "/api/auth/signup") {
+      if (!isAuthConfigured()) return json(500, { error: "Supabase auth needs SUPABASE_PUBLISHABLE_KEY in Netlify environment variables." });
+      const input = parseBody(event);
+      const email = String(input.email || "").trim().toLowerCase();
+      const password = String(input.password || "");
+      if (!email || !password) return json(400, { error: "Email and password are required." });
+      const auth = await supabaseAuthRequest("/auth/v1/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          data: {
+            full_name: String(input.fullName || "").trim(),
+            organization_name: String(input.organizationName || "").trim(),
+            organization_type: String(input.organizationType || "Personal").trim()
+          }
+        })
+      });
+      const user = auth.user || auth;
+      const workspace = await ensureUserWorkspace(user, input);
+      return json(200, {
+        session: auth.session || null,
+        accessToken: auth.session?.access_token || null,
+        refreshToken: auth.session?.refresh_token || null,
+        user: { id: user.id, email: user.email },
+        organizationId: workspace.organizationId
+      });
+    }
+
+    if (method === "POST" && pathname === "/api/auth/login") {
+      if (!isAuthConfigured()) return json(500, { error: "Supabase auth needs SUPABASE_PUBLISHABLE_KEY in Netlify environment variables." });
+      const input = parseBody(event);
+      const email = String(input.email || "").trim().toLowerCase();
+      const password = String(input.password || "");
+      if (!email || !password) return json(400, { error: "Email and password are required." });
+      const auth = await supabaseAuthRequest("/auth/v1/token?grant_type=password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const workspace = await ensureUserWorkspace(auth.user, input);
+      return json(200, {
+        session: auth,
+        accessToken: auth.access_token,
+        refreshToken: auth.refresh_token,
+        user: { id: auth.user?.id, email: auth.user?.email },
+        organizationId: workspace.organizationId
+      });
+    }
+
+    if (method === "GET" && pathname === "/api/auth/me") {
+      const context = await requireAuth();
+      return json(200, {
+        user: context.user ? { id: context.user.id, email: context.user.email } : null,
+        organizationId: context.organizationId,
+        memberships: context.memberships || []
+      });
     }
 
     if (method === "POST" && pathname === "/api/phone-session") {
@@ -603,16 +781,19 @@ exports.handler = async (event) => {
     }
 
     if (method === "GET" && pathname === "/api/items") {
+      const { organizationId } = await requireAuth();
       const items = useSupabase ? await listSupabaseItems(organizationId) : db.items.filter((item) => (item.organizationId || DEFAULT_ORGANIZATION_ID) === organizationId);
       return json(200, { items });
     }
 
     if (method === "GET" && pathname === "/api/categories") {
+      const { organizationId } = await requireAuth();
       const categories = useSupabase ? await listSupabaseCategories(organizationId) : DEFAULT_CATEGORIES;
       return json(200, { categories });
     }
 
     if (method === "POST" && pathname === "/api/classify-photo") {
+      await requireAuth();
       const input = parseBody(event);
       const suggestion = await classifyPhoto(input.photoData);
       return json(200, { suggestion });
@@ -620,6 +801,7 @@ exports.handler = async (event) => {
 
     const itemGetMatch = /^\/api\/items\/([^/]+)$/.exec(pathname);
     if (itemGetMatch && method === "GET") {
+      const { organizationId } = await requireAuth();
       const id = decodeURIComponent(itemGetMatch[1]);
       const item = useSupabase ? await getSupabaseItem(id, organizationId) : db.items.find((entry) => entry.id === id && (entry.organizationId || DEFAULT_ORGANIZATION_ID) === organizationId);
       if (!item) return json(404, { error: "Item not found" });
@@ -627,6 +809,7 @@ exports.handler = async (event) => {
     }
 
     if (method === "POST" && pathname === "/api/items") {
+      const { organizationId } = await requireAuth();
       const input = parseBody(event);
       if (useSupabase) {
         const item = await createSupabaseItem(input, organizationId);
@@ -643,6 +826,7 @@ exports.handler = async (event) => {
 
     const itemMatch = /^\/api\/items\/([^/]+)$/.exec(pathname);
     if (itemMatch && method === "PUT") {
+      const { organizationId } = await requireAuth();
       const id = decodeURIComponent(itemMatch[1]);
       const input = parseBody(event);
       if (useSupabase) {
@@ -663,6 +847,7 @@ exports.handler = async (event) => {
 
     const checkoutMatch = /^\/api\/items\/([^/]+)\/checkout$/.exec(pathname);
     if (checkoutMatch && method === "POST") {
+      const { organizationId } = await requireAuth();
       const id = decodeURIComponent(checkoutMatch[1]);
       const input = parseBody(event);
       if (useSupabase) {
@@ -688,6 +873,7 @@ exports.handler = async (event) => {
 
     const statusMatch = /^\/api\/items\/([^/]+)\/status$/.exec(pathname);
     if (statusMatch && method === "POST") {
+      const { organizationId } = await requireAuth();
       const id = decodeURIComponent(statusMatch[1]);
       const input = parseBody(event);
       const status = ["Available", "Checked Out", "Removed"].includes(input.status) ? input.status : "";

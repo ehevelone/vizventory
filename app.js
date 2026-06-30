@@ -1,6 +1,8 @@
 const state = {
   items: [],
   categories: [],
+  authMode: "login",
+  auth: null,
   stream: null,
   scanTimer: null,
   photoStream: null,
@@ -15,6 +17,23 @@ const state = {
 };
 
 const els = {
+  authView: document.querySelector("#authView"),
+  appView: document.querySelector("#appView"),
+  authForm: document.querySelector("#authForm"),
+  authTitle: document.querySelector("#authTitle"),
+  authMessage: document.querySelector("#authMessage"),
+  authEmail: document.querySelector("#authEmail"),
+  authPassword: document.querySelector("#authPassword"),
+  authName: document.querySelector("#authName"),
+  authOrganization: document.querySelector("#authOrganization"),
+  authOrganizationType: document.querySelector("#authOrganizationType"),
+  signupFields: document.querySelector("#signupFields"),
+  authSubmitBtn: document.querySelector("#authSubmitBtn"),
+  toggleAuthModeBtn: document.querySelector("#toggleAuthModeBtn"),
+  accountBar: document.querySelector("#accountBar"),
+  accountEmail: document.querySelector("#accountEmail"),
+  signOutBtn: document.querySelector("#signOutBtn"),
+  stats: document.querySelector(".stats"),
   form: document.querySelector("#itemForm"),
   clearFormBtn: document.querySelector("#clearFormBtn"),
   category: document.querySelector("#category"),
@@ -65,6 +84,7 @@ const els = {
 };
 
 const settingsKey = "vizventoryCameraSettings";
+const authKey = "vizventoryAuth";
 
 const defaultCategories = [
   { name: "Clothing", subcategories: ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Bags", "Jewelry", "Kids", "Other Clothing"] },
@@ -138,13 +158,128 @@ function escapeHtml(value) {
 }
 
 async function api(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  if (state.auth?.accessToken) headers.Authorization = `Bearer ${state.auth.accessToken}`;
+  if (state.auth?.organizationId) headers["X-Vizventory-Organization-Id"] = state.auth.organizationId;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options
+    ...options,
+    headers
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Something went wrong");
+  if (!response.ok) {
+    if (response.status === 401) showAuth("Please sign in again.");
+    throw new Error(data.error || "Something went wrong");
+  }
   return data;
+}
+
+function loadStoredAuth() {
+  try {
+    return JSON.parse(localStorage.getItem(authKey) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveAuth(auth) {
+  state.auth = auth;
+  localStorage.setItem(authKey, JSON.stringify(auth));
+}
+
+function clearAuth() {
+  state.auth = null;
+  localStorage.removeItem(authKey);
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const signup = mode === "signup";
+  els.authTitle.textContent = signup ? "Create your Vizventory account" : "Sign in to Vizventory";
+  els.authSubmitBtn.textContent = signup ? "Create Account" : "Sign In";
+  els.toggleAuthModeBtn.textContent = signup ? "I Already Have an Account" : "Create Account";
+  els.signupFields.hidden = !signup;
+  els.authPassword.autocomplete = signup ? "new-password" : "current-password";
+  els.authMessage.textContent = signup
+    ? "Create an account and your own inventory workspace."
+    : "Use your Vizventory account to manage your inventory.";
+}
+
+function showAuth(message = "") {
+  clearAuth();
+  els.appView.hidden = true;
+  els.authView.hidden = false;
+  els.accountBar.hidden = true;
+  els.stats.hidden = false;
+  if (message) els.authMessage.textContent = message;
+}
+
+function showApp() {
+  els.authView.hidden = true;
+  els.appView.hidden = false;
+  els.accountBar.hidden = false;
+  els.accountEmail.textContent = state.auth?.email || "";
+}
+
+async function authenticate(event) {
+  event.preventDefault();
+  const signup = state.authMode === "signup";
+  els.authSubmitBtn.disabled = true;
+  els.authMessage.textContent = signup ? "Creating account..." : "Signing in...";
+  try {
+    const data = await api(signup ? "/api/auth/signup" : "/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: els.authEmail.value,
+        password: els.authPassword.value,
+        fullName: els.authName.value,
+        organizationName: els.authOrganization.value,
+        organizationType: els.authOrganizationType.value
+      })
+    });
+    if (!data.accessToken) {
+      setAuthMode("login");
+      els.authMessage.textContent = "Account created. Check your email if Supabase asks for confirmation, then sign in.";
+      return;
+    }
+    saveAuth({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      organizationId: data.organizationId,
+      email: data.user?.email || els.authEmail.value
+    });
+    showApp();
+    await loadCategories();
+    await loadItems();
+  } catch (error) {
+    els.authMessage.textContent = error.message;
+  } finally {
+    els.authSubmitBtn.disabled = false;
+  }
+}
+
+async function restoreSession() {
+  const stored = loadStoredAuth();
+  if (!stored?.accessToken) {
+    showAuth();
+    return;
+  }
+  state.auth = stored;
+  try {
+    const data = await api("/api/auth/me");
+    saveAuth({
+      ...stored,
+      organizationId: data.organizationId,
+      email: data.user?.email || stored.email
+    });
+    showApp();
+    await loadCategories();
+    await loadItems();
+  } catch {
+    showAuth("Please sign in to continue.");
+  }
 }
 
 function fileToDataUrl(file) {
@@ -658,6 +793,15 @@ function capturePhoto() {
   renderPhotoPreview();
 }
 
+els.authForm.addEventListener("submit", authenticate);
+els.toggleAuthModeBtn.addEventListener("click", () => setAuthMode(state.authMode === "login" ? "signup" : "login"));
+els.signOutBtn.addEventListener("click", () => {
+  clearAuth();
+  state.items = [];
+  render();
+  setAuthMode("login");
+  showAuth("Signed out.");
+});
 els.form.addEventListener("submit", saveItem);
 els.clearFormBtn.addEventListener("click", () => {
   els.form.reset();
@@ -744,6 +888,7 @@ loadCameraSettings();
 refreshCameraDevices().catch(() => {
   els.cameraSettingsNote.textContent = "Camera list will appear after browser permission is granted.";
 });
-loadCategories().then(() => loadItems()).catch((error) => {
+setAuthMode("login");
+restoreSession().catch((error) => {
   els.inventoryList.innerHTML = `<p class="item-notes">${escapeHtml(error.message)}</p>`;
 });
