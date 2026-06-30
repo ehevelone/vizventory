@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -219,6 +220,10 @@ const fallbackCategories = <InventoryCategory>[
     name: 'Container',
     subcategories: ['Box', 'Bin', 'Bag', 'Crate', 'Other Container'],
   ),
+  InventoryCategory(
+    name: 'Miscellaneous',
+    subcategories: ['Unsorted', 'Unknown', 'Oddball', 'Mixed Lot'],
+  ),
   InventoryCategory(name: 'Other', subcategories: ['Miscellaneous']),
 ];
 
@@ -228,7 +233,7 @@ String friendlyApiError(Object error) {
   }
   final message = error.toString();
   if (message.contains('SocketException') || message.contains('ClientException')) {
-    return 'The server connection dropped. In Settings, use the deployed Vizventory site URL instead of a local 192.168 address, then try again.';
+    return 'The server connection dropped. Make sure you are online, then try again.';
   }
   return message.replaceFirst('Exception: ', '');
 }
@@ -247,6 +252,11 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   static const _authRefreshKey = 'vizventoryRefreshToken';
   static const _authOrgKey = 'vizventoryOrganizationId';
   static const _authEmailKey = 'vizventoryEmail';
+  static const _rememberEmailKey = 'vizventoryRememberEmail';
+  static const _rememberPasswordKey = 'vizventoryRememberPassword';
+  static const _securePasswordKey = 'vizventorySavedPassword';
+
+  final _secureStorage = const FlutterSecureStorage();
 
   final _serverController = TextEditingController();
   int _tabIndex = 0;
@@ -256,6 +266,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   String _refreshToken = '';
   String _organizationId = '';
   String _email = '';
+  String _rememberedEmail = '';
+  String _rememberedPassword = '';
+  bool _rememberPassword = false;
   List<String> _recentServers = [];
 
   @override
@@ -279,6 +292,11 @@ class _VizventoryHomeState extends State<VizventoryHome> {
     final refreshToken = prefs.getString(_authRefreshKey) ?? '';
     final organizationId = prefs.getString(_authOrgKey) ?? '';
     final email = prefs.getString(_authEmailKey) ?? '';
+    final rememberedEmail = prefs.getString(_rememberEmailKey) ?? email;
+    final rememberPassword = prefs.getBool(_rememberPasswordKey) ?? false;
+    final rememberedPassword = rememberPassword
+        ? await _secureStorage.read(key: _securePasswordKey) ?? ''
+        : '';
     if (!mounted) return;
     setState(() {
       _serverBase = server;
@@ -288,6 +306,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       _refreshToken = refreshToken;
       _organizationId = organizationId;
       _email = email;
+      _rememberedEmail = rememberedEmail;
+      _rememberedPassword = rememberedPassword;
+      _rememberPassword = rememberPassword;
       _message = accessToken.isEmpty ? 'Using hosted Vizventory. Sign in to continue.' : 'Signed in as $email.';
     });
   }
@@ -321,6 +342,8 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   Future<void> _authenticate({
     required String email,
     required String password,
+    required bool rememberEmail,
+    required bool rememberPassword,
   }) async {
     final normalized = _serverBase.isEmpty ? hostedVizventoryUrl : _serverBase;
     final response = await http
@@ -350,7 +373,19 @@ class _VizventoryHomeState extends State<VizventoryHome> {
     await prefs.setString(_authTokenKey, token);
     await prefs.setString(_authRefreshKey, data['refreshToken']?.toString() ?? '');
     await prefs.setString(_authOrgKey, data['organizationId']?.toString() ?? '');
-    await prefs.setString(_authEmailKey, data['user']?['email']?.toString() ?? email);
+    final signedInEmail = data['user']?['email']?.toString() ?? email;
+    await prefs.setString(_authEmailKey, signedInEmail);
+    if (rememberEmail) {
+      await prefs.setString(_rememberEmailKey, signedInEmail);
+    } else {
+      await prefs.remove(_rememberEmailKey);
+    }
+    await prefs.setBool(_rememberPasswordKey, rememberPassword);
+    if (rememberPassword) {
+      await _secureStorage.write(key: _securePasswordKey, value: password);
+    } else {
+      await _secureStorage.delete(key: _securePasswordKey);
+    }
     if (!mounted) return;
     setState(() {
       _serverBase = normalized;
@@ -359,7 +394,10 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       _accessToken = token;
       _refreshToken = data['refreshToken']?.toString() ?? '';
       _organizationId = data['organizationId']?.toString() ?? '';
-      _email = data['user']?['email']?.toString() ?? email;
+      _email = signedInEmail;
+      _rememberedEmail = rememberEmail ? signedInEmail : '';
+      _rememberedPassword = rememberPassword ? password : '';
+      _rememberPassword = rememberPassword;
       _message = 'Signed in as $_email.';
       _tabIndex = 0;
     });
@@ -473,6 +511,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
             child: signedIn
                 ? pages[_tabIndex]
                 : AuthScreen(
+                    initialEmail: _rememberedEmail,
+                    initialPassword: _rememberedPassword,
+                    initialRememberPassword: _rememberPassword,
                     onAuthenticate: _authenticate,
                   ),
           ),
@@ -497,12 +538,20 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
     super.key,
+    required this.initialEmail,
+    required this.initialPassword,
+    required this.initialRememberPassword,
     required this.onAuthenticate,
   });
 
+  final String initialEmail;
+  final String initialPassword;
+  final bool initialRememberPassword;
   final Future<void> Function({
     required String email,
     required String password,
+    required bool rememberEmail,
+    required bool rememberPassword,
   }) onAuthenticate;
 
   @override
@@ -512,8 +561,32 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  bool _rememberEmail = true;
+  bool _rememberPassword = false;
   bool _busy = false;
   String _message = 'Create your account on the Vizventory website, then sign in here.';
+
+  @override
+  void initState() {
+    super.initState();
+    _email.text = widget.initialEmail;
+    _password.text = widget.initialPassword;
+    _rememberPassword = widget.initialRememberPassword;
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_email.text.isEmpty && widget.initialEmail.isNotEmpty) {
+      _email.text = widget.initialEmail;
+    }
+    if (_password.text.isEmpty && widget.initialPassword.isNotEmpty) {
+      _password.text = widget.initialPassword;
+    }
+    if (widget.initialRememberPassword != oldWidget.initialRememberPassword) {
+      _rememberPassword = widget.initialRememberPassword;
+    }
+  }
 
   @override
   void dispose() {
@@ -531,6 +604,8 @@ class _AuthScreenState extends State<AuthScreen> {
       await widget.onAuthenticate(
         email: _email.text,
         password: _password.text,
+        rememberEmail: _rememberEmail,
+        rememberPassword: _rememberPassword,
       );
     } catch (error) {
       if (mounted) setState(() => _message = friendlyApiError(error));
@@ -553,6 +628,21 @@ class _AuthScreenState extends State<AuthScreen> {
         TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
         const SizedBox(height: 10),
         TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+        CheckboxListTile(
+          value: _rememberEmail,
+          onChanged: _busy ? null : (value) => setState(() => _rememberEmail = value ?? true),
+          title: const Text('Remember my email on this device'),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        CheckboxListTile(
+          value: _rememberPassword,
+          onChanged: _busy ? null : (value) => setState(() => _rememberPassword = value ?? false),
+          title: const Text('Remember my password securely'),
+          subtitle: const Text('Saved in this phone\'s secure storage.'),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
         const SizedBox(height: 14),
         FilledButton.icon(
           onPressed: _busy ? null : _submit,
