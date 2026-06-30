@@ -313,13 +313,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   }
 
   Future<void> _authenticate({
-    required bool signup,
     required String serverBase,
     required String email,
     required String password,
-    required String fullName,
-    required String organizationName,
-    required String organizationType,
   }) async {
     final normalized = _normalizeServer(serverBase);
     if (normalized.isEmpty) {
@@ -328,14 +324,11 @@ class _VizventoryHomeState extends State<VizventoryHome> {
     }
     final response = await http
         .post(
-          Uri.parse('$normalized/api/auth/${signup ? 'signup' : 'login'}'),
+          Uri.parse('$normalized/api/auth/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'email': email,
             'password': password,
-            'fullName': fullName,
-            'organizationName': organizationName,
-            'organizationType': organizationType,
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -344,10 +337,7 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       throw Exception(data['error'] ?? 'Sign in failed');
     }
     final token = data['accessToken']?.toString() ?? '';
-    if (token.isEmpty) {
-      _showMessage('Account created. Check your email if confirmation is required, then sign in.');
-      return;
-    }
+    if (token.isEmpty) throw Exception('Sign in failed');
 
     final recent = [
       normalized,
@@ -520,13 +510,9 @@ class AuthScreen extends StatefulWidget {
   final TextEditingController serverController;
   final List<String> recentServers;
   final Future<void> Function({
-    required bool signup,
     required String serverBase,
     required String email,
     required String password,
-    required String fullName,
-    required String organizationName,
-    required String organizationType,
   }) onAuthenticate;
   final ValueChanged<String> onSaveServer;
   final String Function(String) friendlyServer;
@@ -538,36 +524,26 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _name = TextEditingController();
-  final _organization = TextEditingController();
-  String _organizationType = 'Personal';
-  bool _signup = false;
   bool _busy = false;
-  String _message = 'Sign in to manage your inventory.';
+  String _message = 'Create your account on the Vizventory website, then sign in here.';
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
-    _name.dispose();
-    _organization.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     setState(() {
       _busy = true;
-      _message = _signup ? 'Creating account...' : 'Signing in...';
+      _message = 'Signing in...';
     });
     try {
       await widget.onAuthenticate(
-        signup: _signup,
         serverBase: widget.serverController.text,
         email: _email.text,
         password: _password.text,
-        fullName: _name.text,
-        organizationName: _organization.text,
-        organizationType: _organizationType,
       );
     } catch (error) {
       if (mounted) setState(() => _message = friendlyApiError(error));
@@ -583,7 +559,7 @@ class _AuthScreenState extends State<AuthScreen> {
       children: [
         Image.asset('assets/vizventory-logo.png', height: 96, fit: BoxFit.contain),
         const SizedBox(height: 16),
-        Text(_signup ? 'Create your Vizventory account' : 'Sign in to Vizventory', style: Theme.of(context).textTheme.headlineSmall),
+        Text('Sign in to Vizventory', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
         Text(_message, style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 16),
@@ -601,32 +577,14 @@ class _AuthScreenState extends State<AuthScreen> {
         TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
         const SizedBox(height: 10),
         TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-        if (_signup) ...[
-          const SizedBox(height: 10),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Your name')),
-          const SizedBox(height: 10),
-          TextField(controller: _organization, decoration: const InputDecoration(labelText: 'Organization name')),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            value: _organizationType,
-            decoration: const InputDecoration(labelText: 'Organization type'),
-            items: const ['Personal', 'Nonprofit', 'Business', 'Warehouse', 'Reseller']
-                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                .toList(),
-            onChanged: (value) => setState(() => _organizationType = value ?? 'Personal'),
-          ),
-        ],
         const SizedBox(height: 14),
         FilledButton.icon(
           onPressed: _busy ? null : _submit,
           icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
-          label: Text(_busy ? 'Please wait...' : _signup ? 'Create Account' : 'Sign In'),
+          label: Text(_busy ? 'Please wait...' : 'Sign In'),
         ),
         const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _busy ? null : () => setState(() => _signup = !_signup),
-          child: Text(_signup ? 'I Already Have an Account' : 'Create Account'),
-        ),
+        const Text('Need an account? Register on the Vizventory website, then come back and sign in here.'),
         if (widget.recentServers.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text('Remembered sites', style: Theme.of(context).textTheme.titleMedium),

@@ -222,13 +222,22 @@ async function ensureUserWorkspace(user, input = {}) {
 
   const organizationName = String(input.organizationName || input.organization_name || "").trim() || "My Inventory";
   const organizationType = String(input.organizationType || input.organization_type || "Personal").trim() || "Personal";
+  const billingEmail = String(input.email || user.email || "").trim().toLowerCase();
   const organizations = await supabaseRequest("/rest/v1/organizations?select=id,name,organization_type", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Prefer: "return=representation"
     },
-    body: JSON.stringify({ name: organizationName, organization_type: organizationType })
+    body: JSON.stringify({
+      name: organizationName,
+      organization_type: organizationType,
+      billing_email: billingEmail,
+      registration_status: "registered",
+      subscription_status: "trialing",
+      plan: "starter",
+      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    })
   });
   const organization = organizations?.[0];
   if (!organization?.id) throw Object.assign(new Error("Could not create organization"), { status: 500 });
@@ -254,6 +263,19 @@ async function ensureUserWorkspace(user, input = {}) {
       Prefer: "return=minimal"
     },
     body: JSON.stringify({ organization_id: organization.id, user_id: user.id, role: "admin" })
+  });
+  await supabaseRequest("/rest/v1/registration_events", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify({
+      organization_id: organization.id,
+      user_id: user.id,
+      event_type: "registered",
+      details: { source: "website", organizationType }
+    })
   });
 
   return {

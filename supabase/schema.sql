@@ -4,6 +4,13 @@ create table if not exists organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null default 'My Organization',
   organization_type text not null default 'Personal',
+  registration_status text not null default 'registered',
+  subscription_status text not null default 'trialing',
+  plan text not null default 'starter',
+  billing_email text not null default '',
+  stripe_customer_id text not null default '',
+  stripe_subscription_id text not null default '',
+  trial_ends_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -28,6 +35,15 @@ create table if not exists organization_memberships (
   role text not null default 'admin',
   created_at timestamptz not null default now(),
   unique (organization_id, user_id)
+);
+
+create table if not exists registration_events (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  event_type text not null,
+  details jsonb not null default '{}',
+  created_at timestamptz not null default now()
 );
 
 create table if not exists items (
@@ -114,11 +130,22 @@ alter table item_events alter column organization_id set not null;
 alter table item_events drop constraint if exists item_events_organization_id_fkey;
 alter table item_events add constraint item_events_organization_id_fkey foreign key (organization_id) references organizations(id) on delete cascade;
 
+alter table organizations add column if not exists registration_status text not null default 'registered';
+alter table organizations add column if not exists subscription_status text not null default 'trialing';
+alter table organizations add column if not exists plan text not null default 'starter';
+alter table organizations add column if not exists billing_email text not null default '';
+alter table organizations add column if not exists stripe_customer_id text not null default '';
+alter table organizations add column if not exists stripe_subscription_id text not null default '';
+alter table organizations add column if not exists trial_ends_at timestamptz;
+
 create index if not exists item_photos_item_id_idx on item_photos(item_id);
 create index if not exists item_events_item_id_idx on item_events(item_id);
 create index if not exists profiles_default_organization_id_idx on profiles(default_organization_id);
 create index if not exists organization_memberships_user_id_idx on organization_memberships(user_id);
 create index if not exists organization_memberships_organization_id_idx on organization_memberships(organization_id);
+create index if not exists registration_events_organization_id_idx on registration_events(organization_id);
+create index if not exists registration_events_user_id_idx on registration_events(user_id);
+create index if not exists organizations_subscription_status_idx on organizations(subscription_status);
 create index if not exists items_organization_id_idx on items(organization_id);
 create index if not exists items_status_idx on items(status);
 create index if not exists items_updated_at_idx on items(updated_at desc);

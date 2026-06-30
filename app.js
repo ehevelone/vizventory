@@ -207,6 +207,11 @@ function setAuthMode(mode) {
     : "Use your Vizventory account to manage your inventory.";
 }
 
+function authModeFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("register") === "1" || params.get("mode") === "register" ? "signup" : "login";
+}
+
 function showAuth(message = "") {
   clearAuth();
   els.appView.hidden = true;
@@ -888,7 +893,7 @@ loadCameraSettings();
 refreshCameraDevices().catch(() => {
   els.cameraSettingsNote.textContent = "Camera list will appear after browser permission is granted.";
 });
-setAuthMode("login");
+setAuthMode(authModeFromLocation());
 restoreSession().catch((error) => {
   els.inventoryList.innerHTML = `<p class="item-notes">${escapeHtml(error.message)}</p>`;
 });
