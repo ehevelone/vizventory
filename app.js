@@ -97,6 +97,7 @@ const defaultCategories = [
   { name: "Artwork", subcategories: [] },
   { name: "Part", subcategories: [] },
   { name: "Container", subcategories: ["Box", "Bin/Tote", "Case"] },
+  { name: "Miscellaneous", subcategories: ["Unsorted", "Unknown", "Oddball", "Mixed Lot"] },
   { name: "Other", subcategories: [] }
 ];
 

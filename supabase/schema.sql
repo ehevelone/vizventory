@@ -102,6 +102,18 @@ create table if not exists item_events (
 );
 
 alter table items add column if not exists organization_id uuid;
+alter table items add column if not exists title text not null default 'Inventory item';
+alter table items add column if not exists category text not null default '';
+alter table items add column if not exists subcategory text not null default '';
+alter table items add column if not exists size text not null default '';
+alter table items add column if not exists color text not null default '';
+alter table items add column if not exists condition text not null default '';
+alter table items add column if not exists location text not null default '';
+alter table items add column if not exists notes text not null default '';
+alter table items add column if not exists tags text[] not null default '{}';
+alter table items add column if not exists status text not null default 'Available';
+alter table items add column if not exists created_at timestamptz not null default now();
+alter table items add column if not exists updated_at timestamptz not null default now();
 alter table items alter column organization_id set default '00000000-0000-0000-0000-000000000001';
 update items set organization_id = '00000000-0000-0000-0000-000000000001' where organization_id is null;
 alter table items alter column organization_id set not null;
@@ -154,6 +166,10 @@ create index if not exists item_events_organization_id_idx on item_events(organi
 create index if not exists categories_sort_order_idx on categories(sort_order, name);
 create index if not exists subcategories_category_sort_order_idx on subcategories(category_id, sort_order, name);
 
+insert into organizations (id, name, organization_type)
+values ('00000000-0000-0000-0000-000000000001', 'Default Organization', 'Personal')
+on conflict (id) do nothing;
+
 insert into categories (organization_id, name, sort_order)
 values
   ('00000000-0000-0000-0000-000000000001', 'Clothing', 10),
@@ -166,7 +182,8 @@ values
   ('00000000-0000-0000-0000-000000000001', 'Artwork', 80),
   ('00000000-0000-0000-0000-000000000001', 'Part', 90),
   ('00000000-0000-0000-0000-000000000001', 'Container', 100),
-  ('00000000-0000-0000-0000-000000000001', 'Other', 110)
+  ('00000000-0000-0000-0000-000000000001', 'Miscellaneous', 110),
+  ('00000000-0000-0000-0000-000000000001', 'Other', 120)
 on conflict (organization_id, name) do update set sort_order = excluded.sort_order;
 
 insert into subcategories (category_id, name, sort_order)
@@ -208,7 +225,11 @@ join (
     ('Document', 'Records', 30),
     ('Container', 'Box', 10),
     ('Container', 'Bin/Tote', 20),
-    ('Container', 'Case', 30)
+    ('Container', 'Case', 30),
+    ('Miscellaneous', 'Unsorted', 10),
+    ('Miscellaneous', 'Unknown', 20),
+    ('Miscellaneous', 'Oddball', 30),
+    ('Miscellaneous', 'Mixed Lot', 40)
 ) as v(category_name, name, sort_order)
 on c.name = v.category_name
 on conflict (category_id, name) do update set sort_order = excluded.sort_order;

@@ -48,6 +48,10 @@ const DEFAULT_CATEGORIES = [
     name: "Container",
     subcategories: ["Box", "Bin/Tote", "Case"]
   },
+  {
+    name: "Miscellaneous",
+    subcategories: ["Unsorted", "Unknown", "Oddball", "Mixed Lot"]
+  },
   { name: "Other", subcategories: [] }
 ];
 
@@ -651,7 +655,7 @@ async function classifyPhoto(photoData) {
               "Return only JSON with these fields:",
               "title, category, subcategory, size, color, condition, tags, description, notes.",
               "Use short practical wording. If unsure, make the best useful guess and mention uncertainty in notes.",
-              "Categories should be broad inventory categories such as Clothing, Equipment, Tool, Electronics, Furniture, Supply, Document, Artwork, Part, Container, or Other."
+              "Categories should be broad inventory categories such as Clothing, Equipment, Tool, Electronics, Furniture, Supply, Document, Artwork, Part, Container, Miscellaneous, or Other. Use Miscellaneous for odd items that do not fit a clear category."
             ].join(" ")
           },
           { type: "input_image", image_url: photoData }
