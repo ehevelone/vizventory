@@ -32,9 +32,14 @@ Responsibilities:
 
 Current prototype location:
 
-- `public/index.html`
-- `public/app.js`
-- `server.js`
+- `index.html`
+- `app.js`
+- `styles.css`
+- `phone.html`
+- `phone.js`
+- `assets`
+- `netlify/functions/api.js`
+- `netlify.toml`
 
 ### 2. Mobile Capture App
 
@@ -50,8 +55,8 @@ Responsibilities:
 
 Current proof-of-concept locations:
 
-- `public/phone.html`
-- `public/phone.js`
+- `phone.html`
+- `phone.js`
 - `mobile_app`
 
 Future store-app path:
@@ -74,17 +79,17 @@ Responsibilities:
 - Track checkout and status history
 - Later: users, organizations, roles, subscription/account settings
 
-Current local backend:
+Current backend shell:
 
-- `server.js`
-- `data/inventory.json`
-- `data/photos`
+- `netlify/functions/api.js`
+- `data/inventory.json` for temporary local prototype data
+- `data/photos` for temporary local prototype photos
 
 Cloud backend target:
 
-- Supabase or Postgres-compatible database
-- Object storage for photos
-- API layer for validation, permissions, and organization boundaries
+- Supabase Postgres database
+- Supabase Storage for photos
+- Netlify Functions for validation, permissions, OpenAI calls, and organization boundaries
 
 ## Data Model Direction
 

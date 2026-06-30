@@ -1,0 +1,92 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/photos/*"
+  to = "/.netlify/functions/api/photos/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/c/:session"
+  to = "/phone.html?session=:session"
+  status = 200
+
+[[redirects]]
+  from = "/mobile_app/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/data/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/public/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/PRODUCT_BLUEPRINT.md"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Start%20Vizventory.bat"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.env.example"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

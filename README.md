@@ -1,10 +1,16 @@
 # Vizventory
 
-Vizventory turns pictures into organized inventory. The current version is a local prototype with a desktop web app and paired phone/mobile capture.
+Vizventory turns pictures into organized inventory. The current version is a Netlify-style app with a static web frontend, Netlify Functions, and paired phone/mobile capture.
 
 ## Run Locally
 
-Double-click:
+Install dependencies:
+
+```text
+npm install
+```
+
+Then double-click:
 
 ```text
 Start Vizventory.bat
@@ -17,6 +23,8 @@ http://localhost:4174
 ```
 
 Keep the command window open while using the app.
+
+The local runner uses Netlify Dev so local behavior matches the deployed site.
 
 ## AI Photo Suggestions
 
@@ -37,8 +45,27 @@ After that, choose or take a photo and click `AI Suggest` to fill in the item na
 - Print Avery-style item labels
 - Search and filter inventory
 - Check items out by typing/scanning the item ID
-- Store local data in `data/inventory.json`
-- Store local photos in `data/photos`
+- Store prototype data in `data/inventory.json`
+- Store prototype photos in `data/photos`
+
+## Deploy Shape
+
+```text
+index.html
+app.js
+styles.css
+phone.html
+phone.js
+assets/
+netlify/functions/
+mobile_app/
+package.json
+netlify.toml
+```
+
+The website is static. Browser and mobile requests go to `/api/...`, and Netlify redirects those requests into `netlify/functions/api.js`.
+
+The next production step is replacing the temporary local JSON/photo store with Supabase Postgres and Supabase Storage.
 
 ## Phone Capture
 

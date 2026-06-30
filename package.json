@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Picture-to-inventory platform with web admin and mobile capture",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "netlify dev",
+    "dev": "netlify dev",
+    "check": "node --check netlify/functions/api.js && node --check app.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4"

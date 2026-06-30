@@ -10,5 +10,5 @@ echo Keep this window open while using the app.
 echo Open http://localhost:%PORT% in your browser.
 echo.
 start "" http://localhost:%PORT%
-node server.js
+npx netlify dev --port %PORT%
 pause
