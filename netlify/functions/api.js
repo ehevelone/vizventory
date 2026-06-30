@@ -223,22 +223,24 @@ async function ensureUserWorkspace(user, input = {}) {
   const organizationName = String(input.organizationName || input.organization_name || "").trim() || "My Inventory";
   const organizationType = String(input.organizationType || input.organization_type || "Personal").trim() || "Personal";
   const billingEmail = String(input.email || user.email || "").trim().toLowerCase();
-  const organizations = await supabaseRequest("/rest/v1/organizations?select=id,name,organization_type", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation"
-    },
-    body: JSON.stringify({
-      name: organizationName,
-      organization_type: organizationType,
-      billing_email: billingEmail,
-      registration_status: "registered",
-      subscription_status: "trialing",
-      plan: "starter",
-      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-    })
-  });
+  const organizationBase = {
+    name: organizationName,
+    organization_type: organizationType
+  };
+  const organizationBillingFields = {
+    billing_email: billingEmail,
+    registration_status: "registered",
+    subscription_status: "trialing",
+    plan: "starter",
+    trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+  };
+  let organizations;
+  try {
+    organizations = await createOrganization({ ...organizationBase, ...organizationBillingFields });
+  } catch (error) {
+    if (!/schema cache|billing_email|registration_status|subscription_status|trial_ends_at|plan/i.test(error.message || "")) throw error;
+    organizations = await createOrganization(organizationBase);
+  }
   const organization = organizations?.[0];
   if (!organization?.id) throw Object.assign(new Error("Could not create organization"), { status: 500 });
 
@@ -264,19 +266,7 @@ async function ensureUserWorkspace(user, input = {}) {
     },
     body: JSON.stringify({ organization_id: organization.id, user_id: user.id, role: "admin" })
   });
-  await supabaseRequest("/rest/v1/registration_events", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=minimal"
-    },
-    body: JSON.stringify({
-      organization_id: organization.id,
-      user_id: user.id,
-      event_type: "registered",
-      details: { source: "website", organizationType }
-    })
-  });
+  await logRegistrationEvent(organization.id, user.id, organizationType);
 
   return {
     user,
@@ -284,6 +274,37 @@ async function ensureUserWorkspace(user, input = {}) {
     organizationId: organization.id,
     memberships: [{ organization_id: organization.id, role: "admin" }]
   };
+}
+
+async function createOrganization(payload) {
+  return supabaseRequest("/rest/v1/organizations?select=id,name,organization_type", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function logRegistrationEvent(organizationId, userId, organizationType) {
+  try {
+    await supabaseRequest("/rest/v1/registration_events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        user_id: userId,
+        event_type: "registered",
+        details: { source: "website", organizationType }
+      })
+    });
+  } catch (error) {
+    if (!/schema cache|registration_events/i.test(error.message || "")) throw error;
+  }
 }
 
 async function authContext(event) {

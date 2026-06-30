@@ -221,7 +221,11 @@ String friendlyApiError(Object error) {
   if (error is TimeoutException) {
     return 'The server took too long to answer. Check the connection, then pull down to retry.';
   }
-  return error.toString().replaceFirst('Exception: ', '');
+  final message = error.toString();
+  if (message.contains('SocketException') || message.contains('ClientException')) {
+    return 'The server connection dropped. In Settings, use the deployed Vizventory site URL instead of a local 192.168 address, then try again.';
+  }
+  return message.replaceFirst('Exception: ', '');
 }
 
 class VizventoryHome extends StatefulWidget {
@@ -847,8 +851,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Future<void> _pickPhoto(ImageSource source) async {
     final image = await _picker.pickImage(
       source: source,
-      imageQuality: 82,
-      maxWidth: 1800,
+      imageQuality: 70,
+      maxWidth: 1280,
     );
     if (image == null) return;
     final bytes = await image.readAsBytes();
