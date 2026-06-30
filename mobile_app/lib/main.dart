@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -22,9 +23,14 @@ class VizventoryApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Vizventory',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: blue).copyWith(surface: linen),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: blue,
+        ).copyWith(surface: linen),
         scaffoldBackgroundColor: linen,
-        appBarTheme: const AppBarTheme(backgroundColor: ink, foregroundColor: Colors.white),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: ink,
+          foregroundColor: Colors.white,
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: blue,
@@ -50,6 +56,7 @@ class InventoryItem {
     required this.title,
     required this.status,
     this.category = '',
+    this.subcategory = '',
     this.size = '',
     this.color = '',
     this.condition = '',
@@ -63,6 +70,7 @@ class InventoryItem {
   final String title;
   final String status;
   final String category;
+  final String subcategory;
   final String size;
   final String color;
   final String condition;
@@ -75,17 +83,145 @@ class InventoryItem {
     return InventoryItem(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Inventory item',
-      status: json['status']?.toString() == 'Donated' ? 'Checked Out' : json['status']?.toString() ?? 'Available',
+      status: json['status']?.toString() == 'Donated'
+          ? 'Checked Out'
+          : json['status']?.toString() ?? 'Available',
       category: json['category']?.toString() ?? '',
+      subcategory: json['subcategory']?.toString() ?? '',
       size: json['size']?.toString() ?? '',
       color: json['color']?.toString() ?? '',
       condition: json['condition']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
       tags: (json['tags'] as List? ?? []).map((tag) => tag.toString()).toList(),
-      photos: (json['photos'] as List? ?? []).map((photo) => photo.toString()).toList(),
+      photos: (json['photos'] as List? ?? [])
+          .map((photo) => photo.toString())
+          .toList(),
     );
   }
+}
+
+class InventoryCategory {
+  const InventoryCategory({required this.name, required this.subcategories});
+
+  final String name;
+  final List<String> subcategories;
+
+  factory InventoryCategory.fromJson(Map<String, dynamic> json) {
+    return InventoryCategory(
+      name: json['name']?.toString() ?? '',
+      subcategories: (json['subcategories'] as List? ?? [])
+          .map((item) => item.toString())
+          .where((item) => item.isNotEmpty)
+          .toList(),
+    );
+  }
+}
+
+const fallbackCategories = <InventoryCategory>[
+  InventoryCategory(
+    name: 'Clothing',
+    subcategories: [
+      'Tops',
+      'Bottoms',
+      'Dresses',
+      'Outerwear',
+      'Shoes',
+      'Accessories',
+      'Bags',
+      'Jewelry',
+      'Kids',
+      'Other Clothing',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Equipment',
+    subcategories: [
+      'Office Equipment',
+      'Kitchen Equipment',
+      'Medical Equipment',
+      'Outdoor Equipment',
+      'Other Equipment',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Tool',
+    subcategories: [
+      'Power Tools',
+      'Hand Tools',
+      'Garden Tools',
+      'Measuring Tools',
+      'Other Tools',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Electronics',
+    subcategories: [
+      'Computer',
+      'Phone',
+      'Tablet',
+      'Audio',
+      'Camera',
+      'Other Electronics',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Furniture',
+    subcategories: [
+      'Desk',
+      'Chair',
+      'Table',
+      'Shelf',
+      'Storage',
+      'Other Furniture',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Supply',
+    subcategories: [
+      'Office Supplies',
+      'Cleaning Supplies',
+      'Food Supplies',
+      'Medical Supplies',
+      'Other Supplies',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Document',
+    subcategories: [
+      'Record',
+      'Manual',
+      'Receipt',
+      'Certificate',
+      'Other Document',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Artwork',
+    subcategories: ['Painting', 'Print', 'Sculpture', 'Decor', 'Other Artwork'],
+  ),
+  InventoryCategory(
+    name: 'Part',
+    subcategories: [
+      'Replacement Part',
+      'Hardware',
+      'Cable',
+      'Accessory',
+      'Other Part',
+    ],
+  ),
+  InventoryCategory(
+    name: 'Container',
+    subcategories: ['Box', 'Bin', 'Bag', 'Crate', 'Other Container'],
+  ),
+  InventoryCategory(name: 'Other', subcategories: ['Miscellaneous']),
+];
+
+String friendlyApiError(Object error) {
+  if (error is TimeoutException) {
+    return 'The server took too long to answer. Check the connection, then pull down to retry.';
+  }
+  return error.toString().replaceFirst('Exception: ', '');
 }
 
 class VizventoryHome extends StatefulWidget {
@@ -126,14 +262,19 @@ class _VizventoryHomeState extends State<VizventoryHome> {
       _serverBase = server;
       _serverController.text = server;
       _recentServers = recent;
-      _message = server.isEmpty ? _message : 'Connected to ${_friendlyServer(server)}.';
+      _message = server.isEmpty
+          ? _message
+          : 'Connected to ${_friendlyServer(server)}.';
     });
   }
 
   Future<void> _saveServer(String serverBase) async {
     final normalized = _normalizeServer(serverBase);
     if (normalized.isEmpty) return;
-    final recent = [normalized, ..._recentServers.where((item) => item != normalized)].take(5).toList();
+    final recent = [
+      normalized,
+      ..._recentServers.where((item) => item != normalized),
+    ].take(5).toList();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_serverKey, normalized);
     await prefs.setStringList(_recentDevicesKey, recent);
@@ -148,7 +289,9 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 
   Future<void> _scanDesktopQr() async {
     final value = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const QrScannerPage(title: 'Scan Desktop QR')),
+      MaterialPageRoute(
+        builder: (_) => const QrScannerPage(title: 'Scan Desktop QR'),
+      ),
     );
     if (value == null) return;
     final uri = Uri.tryParse(value.trim());
@@ -163,13 +306,16 @@ class _VizventoryHomeState extends State<VizventoryHome> {
   void _showMessage(String message) {
     if (!mounted) return;
     setState(() => _message = message);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _normalizeServer(String value) {
     var server = value.trim();
     if (server.isEmpty) return '';
-    if (!server.startsWith('http://') && !server.startsWith('https://')) server = 'http://$server';
+    if (!server.startsWith('http://') && !server.startsWith('https://'))
+      server = 'http://$server';
     while (server.endsWith('/')) {
       server = server.substring(0, server.length - 1);
     }
@@ -214,10 +360,14 @@ class _VizventoryHomeState extends State<VizventoryHome> {
         children: [
           if (_message.isNotEmpty)
             Material(
-              color: connected ? const Color(0xFFE8F1EA) : const Color(0xFFFFF4D7),
+              color: connected
+                  ? const Color(0xFFE8F1EA)
+                  : const Color(0xFFFFF4D7),
               child: ListTile(
                 dense: true,
-                leading: Icon(connected ? Icons.check_circle : Icons.info_outline),
+                leading: Icon(
+                  connected ? Icons.check_circle : Icons.info_outline,
+                ),
                 title: Text(_message),
               ),
             ),
@@ -228,10 +378,22 @@ class _VizventoryHomeState extends State<VizventoryHome> {
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.inventory_2_outlined), label: 'Inventory'),
-          NavigationDestination(icon: Icon(Icons.add_a_photo_outlined), label: 'Add'),
-          NavigationDestination(icon: Icon(Icons.qr_code_scanner), label: 'Scan'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+          NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            label: 'Inventory',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_a_photo_outlined),
+            label: 'Add',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.qr_code_scanner),
+            label: 'Scan',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            label: 'Settings',
+          ),
         ],
       ),
     );
@@ -239,7 +401,11 @@ class _VizventoryHomeState extends State<VizventoryHome> {
 }
 
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({super.key, required this.serverBase, required this.onMessage});
+  const InventoryScreen({
+    super.key,
+    required this.serverBase,
+    required this.onMessage,
+  });
   final String serverBase;
   final ValueChanged<String> onMessage;
 
@@ -274,14 +440,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (widget.serverBase.isEmpty) return;
     setState(() => _loading = true);
     try {
-      final response = await http.get(Uri.parse('${widget.serverBase}/api/items')).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(Uri.parse('${widget.serverBase}/api/items'))
+          .timeout(const Duration(seconds: 30));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode != 200) throw Exception(data['error'] ?? 'Could not load inventory');
+      if (response.statusCode != 200)
+        throw Exception(data['error'] ?? 'Could not load inventory');
       setState(() {
-        _items = (data['items'] as List? ?? []).map((item) => InventoryItem.fromJson(item)).toList();
+        _items = (data['items'] as List? ?? [])
+            .map((item) => InventoryItem.fromJson(item))
+            .toList();
       });
     } catch (error) {
-      widget.onMessage('Inventory load failed: $error');
+      widget.onMessage('Inventory load failed: ${friendlyApiError(error)}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -289,15 +460,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.serverBase.isEmpty) return const EmptyState(message: 'Connect to a desktop in Settings first.');
+    if (widget.serverBase.isEmpty)
+      return const EmptyState(
+        message: 'Connect to a desktop in Settings first.',
+      );
     final query = _searchController.text.trim().toLowerCase();
     final visible = query.isEmpty
         ? _items
         : _items.where((item) {
-            return [item.id, item.title, item.category, item.location, item.tags.join(' ')]
-                .join(' ')
-                .toLowerCase()
-                .contains(query);
+            return [
+              item.id,
+              item.title,
+              item.category,
+              item.subcategory,
+              item.location,
+              item.tags.join(' '),
+            ].join(' ').toLowerCase().contains(query);
           }).toList();
 
     return RefreshIndicator(
@@ -307,13 +485,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
         children: [
           TextField(
             controller: _searchController,
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search inventory'),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: 'Search inventory',
+            ),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
           if (_loading) const LinearProgressIndicator(),
-          for (final item in visible) InventoryCard(item: item, serverBase: widget.serverBase),
-          if (!_loading && visible.isEmpty) const EmptyState(message: 'No inventory items found.'),
+          for (final item in visible)
+            InventoryCard(item: item, serverBase: widget.serverBase),
+          if (!_loading && visible.isEmpty)
+            EmptyState(
+              message: query.isEmpty
+                  ? 'No inventory yet. Tap Add to take a picture and create your first item.'
+                  : 'No matching inventory found.',
+            ),
         ],
       ),
     );
@@ -321,7 +508,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
 }
 
 class AddItemScreen extends StatefulWidget {
-  const AddItemScreen({super.key, required this.serverBase, required this.onMessage});
+  const AddItemScreen({
+    super.key,
+    required this.serverBase,
+    required this.onMessage,
+  });
   final String serverBase;
   final ValueChanged<String> onMessage;
 
@@ -333,6 +524,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final _picker = ImagePicker();
   final _title = TextEditingController();
   final _category = TextEditingController();
+  final _subcategory = TextEditingController();
   final _size = TextEditingController();
   final _color = TextEditingController();
   final _condition = TextEditingController(text: 'Good');
@@ -343,22 +535,114 @@ class _AddItemScreenState extends State<AddItemScreen> {
   String _photoMime = 'image/jpeg';
   bool _saving = false;
   bool _classifying = false;
+  List<InventoryCategory> _categories = fallbackCategories;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  @override
+  void didUpdateWidget(covariant AddItemScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.serverBase != widget.serverBase) _loadCategories();
+  }
 
   @override
   void dispose() {
-    for (final controller in [_title, _category, _size, _color, _condition, _location, _tags, _notes]) {
+    for (final controller in [
+      _title,
+      _category,
+      _subcategory,
+      _size,
+      _color,
+      _condition,
+      _location,
+      _tags,
+      _notes,
+    ]) {
       controller.dispose();
     }
     super.dispose();
   }
 
+  Future<void> _loadCategories() async {
+    if (widget.serverBase.isEmpty) {
+      if (mounted) setState(() => _categories = fallbackCategories);
+      return;
+    }
+
+    try {
+      final response = await http
+          .get(Uri.parse('${widget.serverBase}/api/categories'))
+          .timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode != 200)
+        throw Exception(data['error'] ?? 'Could not load categories');
+      final loaded = (data['categories'] as List? ?? [])
+          .map(
+            (item) => InventoryCategory.fromJson(
+              (item as Map).cast<String, dynamic>(),
+            ),
+          )
+          .where((item) => item.name.isNotEmpty)
+          .toList();
+      if (mounted && loaded.isNotEmpty) setState(() => _categories = loaded);
+    } catch (_) {
+      if (mounted) setState(() => _categories = fallbackCategories);
+    }
+  }
+
+  List<String> get _categoryOptions {
+    final names = _categories
+        .map((item) => item.name)
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (_category.text.isNotEmpty && !names.contains(_category.text))
+      names.add(_category.text);
+    return names;
+  }
+
+  List<String> get _subcategoryOptions {
+    final selected = _category.text.trim();
+    final match = _categories
+        .where((item) => item.name.toLowerCase() == selected.toLowerCase())
+        .toList();
+    final names = match.isEmpty ? <String>[] : [...match.first.subcategories];
+    if (_subcategory.text.isNotEmpty && !names.contains(_subcategory.text))
+      names.add(_subcategory.text);
+    return names;
+  }
+
+  void _setCategory(String? value) {
+    setState(() {
+      final selected = value ?? '';
+      final match = _categories
+          .where((item) => item.name.toLowerCase() == selected.toLowerCase())
+          .toList();
+      final allowedSubcategories = match.isEmpty
+          ? <String>[]
+          : match.first.subcategories;
+      _category.text = selected;
+      if (!allowedSubcategories.contains(_subcategory.text))
+        _subcategory.clear();
+    });
+  }
+
   Future<void> _pickPhoto(ImageSource source) async {
-    final image = await _picker.pickImage(source: source, imageQuality: 82, maxWidth: 1800);
+    final image = await _picker.pickImage(
+      source: source,
+      imageQuality: 82,
+      maxWidth: 1800,
+    );
     if (image == null) return;
     final bytes = await image.readAsBytes();
     setState(() {
       _photoBytes = bytes;
-      _photoMime = image.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      _photoMime = image.name.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : 'image/jpeg';
     });
   }
 
@@ -372,13 +656,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
       final body = {
         'title': _title.text,
         'category': _category.text,
+        'subcategory': _subcategory.text,
         'size': _size.text,
         'color': _color.text,
         'condition': _condition.text,
         'location': _location.text,
         'tags': _tags.text,
         'notes': _notes.text,
-        'photoData': _photoBytes == null ? [] : ['data:$_photoMime;base64,${base64Encode(_photoBytes!)}'],
+        'photoData': _photoBytes == null
+            ? []
+            : ['data:$_photoMime;base64,${base64Encode(_photoBytes!)}'],
       };
       final response = await http
           .post(
@@ -386,11 +673,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 45));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error'] ?? 'Save failed');
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        throw Exception(data['error'] ?? 'Save failed');
       _title.clear();
       _category.clear();
+      _subcategory.clear();
       _size.clear();
       _color.clear();
       _condition.text = 'Good';
@@ -400,7 +689,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       setState(() => _photoBytes = null);
       widget.onMessage('Item saved: ${data['item']?['id'] ?? ''}');
     } catch (error) {
-      widget.onMessage('Could not save item: $error');
+      widget.onMessage('Could not save item: ${friendlyApiError(error)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -422,26 +711,44 @@ class _AddItemScreenState extends State<AddItemScreen> {
           .post(
             Uri.parse('${widget.serverBase}/api/classify-photo'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'photoData': 'data:$_photoMime;base64,${base64Encode(_photoBytes!)}'}),
+            body: jsonEncode({
+              'photoData':
+                  'data:$_photoMime;base64,${base64Encode(_photoBytes!)}',
+            }),
           )
-          .timeout(const Duration(seconds: 35));
+          .timeout(const Duration(seconds: 60));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error'] ?? 'AI suggestion failed');
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        throw Exception(data['error'] ?? 'AI suggestion failed');
 
-      final suggestion = (data['suggestion'] as Map?)?.cast<String, dynamic>() ?? {};
-      final tags = suggestion['tags'] is List ? (suggestion['tags'] as List).join(', ') : '${suggestion['tags'] ?? ''}';
+      final suggestion =
+          (data['suggestion'] as Map?)?.cast<String, dynamic>() ?? {};
+      final tags = suggestion['tags'] is List
+          ? (suggestion['tags'] as List).join(', ')
+          : '${suggestion['tags'] ?? ''}';
       String suggestedText(String key) => '${suggestion[key] ?? ''}'.trim();
-      if (suggestedText('title').isNotEmpty) _title.text = suggestedText('title');
-      if (suggestedText('category').isNotEmpty) _category.text = suggestedText('category');
+      if (suggestedText('title').isNotEmpty)
+        _title.text = suggestedText('title');
+      if (suggestedText('category').isNotEmpty)
+        _category.text = suggestedText('category');
+      if (suggestedText('subcategory').isNotEmpty)
+        _subcategory.text = suggestedText('subcategory');
       if (suggestedText('size').isNotEmpty) _size.text = suggestedText('size');
-      if (suggestedText('color').isNotEmpty) _color.text = suggestedText('color');
-      if (suggestedText('condition').isNotEmpty) _condition.text = suggestedText('condition');
+      if (suggestedText('color').isNotEmpty)
+        _color.text = suggestedText('color');
+      if (suggestedText('condition').isNotEmpty)
+        _condition.text = suggestedText('condition');
       _tags.text = tags.isEmpty ? _tags.text : tags;
-      final notes = suggestedText('notes').isNotEmpty ? suggestedText('notes') : suggestedText('description');
+      final notes = suggestedText('notes').isNotEmpty
+          ? suggestedText('notes')
+          : suggestedText('description');
       if (notes.isNotEmpty) _notes.text = notes;
-      widget.onMessage('AI filled in the item details. Review them, then save.');
+      if (mounted) setState(() {});
+      widget.onMessage(
+        'AI filled in the item details. Review them, then save.',
+      );
     } catch (error) {
-      widget.onMessage('Could not read photo: $error');
+      widget.onMessage('Could not read photo: ${friendlyApiError(error)}');
     } finally {
       if (mounted) setState(() => _classifying = false);
     }
@@ -452,37 +759,115 @@ class _AddItemScreenState extends State<AddItemScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ImagePickerPanel(photoBytes: _photoBytes, onCamera: () => _pickPhoto(ImageSource.camera), onGallery: () => _pickPhoto(ImageSource.gallery)),
+        ImagePickerPanel(
+          photoBytes: _photoBytes,
+          onCamera: () => _pickPhoto(ImageSource.camera),
+          onGallery: () => _pickPhoto(ImageSource.gallery),
+        ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _classifying ? null : _classifyPhoto,
-          icon: _classifying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome),
+          icon: _classifying
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.auto_awesome),
           label: Text(_classifying ? 'Reading photo...' : 'AI Suggest'),
         ),
         const SizedBox(height: 12),
-        TextField(controller: _title, decoration: const InputDecoration(labelText: 'Item name')),
+        TextField(
+          controller: _title,
+          decoration: const InputDecoration(labelText: 'Item name'),
+        ),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: TextField(controller: _category, decoration: const InputDecoration(labelText: 'Category'))),
-          const SizedBox(width: 10),
-          Expanded(child: TextField(controller: _size, decoration: const InputDecoration(labelText: 'Size / Model'))),
-        ]),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _category.text.isEmpty ? null : _category.text,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Category'),
+                items: _categoryOptions
+                    .map(
+                      (item) =>
+                          DropdownMenuItem(value: item, child: Text(item)),
+                    )
+                    .toList(),
+                onChanged: _setCategory,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _subcategory.text.isEmpty ? null : _subcategory.text,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Subcategory'),
+                items: _subcategoryOptions
+                    .map(
+                      (item) =>
+                          DropdownMenuItem(value: item, child: Text(item)),
+                    )
+                    .toList(),
+                onChanged: _subcategoryOptions.isEmpty
+                    ? null
+                    : (value) =>
+                          setState(() => _subcategory.text = value ?? ''),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: TextField(controller: _color, decoration: const InputDecoration(labelText: 'Color / Finish'))),
-          const SizedBox(width: 10),
-          Expanded(child: TextField(controller: _condition, decoration: const InputDecoration(labelText: 'Condition'))),
-        ]),
+        TextField(
+          controller: _size,
+          decoration: const InputDecoration(labelText: 'Size / Model'),
+        ),
         const SizedBox(height: 10),
-        TextField(controller: _location, decoration: const InputDecoration(labelText: 'Location')),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _color,
+                decoration: const InputDecoration(labelText: 'Color / Finish'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _condition,
+                decoration: const InputDecoration(labelText: 'Condition'),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
-        TextField(controller: _tags, decoration: const InputDecoration(labelText: 'Tags')),
+        TextField(
+          controller: _location,
+          decoration: const InputDecoration(labelText: 'Location'),
+        ),
         const SizedBox(height: 10),
-        TextField(controller: _notes, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes')),
+        TextField(
+          controller: _tags,
+          decoration: const InputDecoration(labelText: 'Tags'),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _notes,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(labelText: 'Notes'),
+        ),
         const SizedBox(height: 14),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
-          icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+          icon: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save),
           label: Text(_saving ? 'Saving...' : 'Save Item'),
         ),
       ],
@@ -491,7 +876,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
 }
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key, required this.serverBase, required this.onMessage});
+  const ScanScreen({
+    super.key,
+    required this.serverBase,
+    required this.onMessage,
+  });
   final String serverBase;
   final ValueChanged<String> onMessage;
 
@@ -510,7 +899,9 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> _scanAndUpdate(String status) async {
     final value = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const QrScannerPage(title: 'Scan Item Label')),
+      MaterialPageRoute(
+        builder: (_) => const QrScannerPage(title: 'Scan Item Label'),
+      ),
     );
     if (value != null) await _updateStatus(_cleanItemCode(value), status);
   }
@@ -524,23 +915,30 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       final response = await http
           .post(
-            Uri.parse('${widget.serverBase}/api/items/${Uri.encodeComponent(itemId)}/status'),
+            Uri.parse(
+              '${widget.serverBase}/api/items/${Uri.encodeComponent(itemId)}/status',
+            ),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'status': status, 'note': 'Updated from mobile app'}),
+            body: jsonEncode({
+              'status': status,
+              'note': 'Updated from mobile app',
+            }),
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 30));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(data['error'] ?? 'Update failed');
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        throw Exception(data['error'] ?? 'Update failed');
       widget.onMessage('${data['item']?['id'] ?? itemId} marked $status.');
       _manualId.clear();
     } catch (error) {
-      widget.onMessage('Could not update item: $error');
+      widget.onMessage('Could not update item: ${friendlyApiError(error)}');
     }
   }
 
   String _cleanItemCode(String value) {
     final uri = Uri.tryParse(value.trim());
-    if (uri != null && uri.queryParameters['item'] != null) return uri.queryParameters['item']!;
+    if (uri != null && uri.queryParameters['item'] != null)
+      return uri.queryParameters['item']!;
     return value.trim().split(RegExp(r'\s+')).first;
   }
 
@@ -561,13 +959,28 @@ class _ScanScreenState extends State<ScanScreen> {
           label: const Text('Scan and Check In'),
         ),
         const SizedBox(height: 18),
-        TextField(controller: _manualId, decoration: const InputDecoration(labelText: 'Or type item code')),
+        TextField(
+          controller: _manualId,
+          decoration: const InputDecoration(labelText: 'Or type item code'),
+        ),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: FilledButton(onPressed: () => _updateStatus(_manualId.text, 'Checked Out'), child: const Text('Check Out'))),
-          const SizedBox(width: 10),
-          Expanded(child: OutlinedButton(onPressed: () => _updateStatus(_manualId.text, 'Available'), child: const Text('Check In'))),
-        ]),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: () => _updateStatus(_manualId.text, 'Checked Out'),
+                child: const Text('Check Out'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _updateStatus(_manualId.text, 'Available'),
+                child: const Text('Check In'),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -598,16 +1011,37 @@ class SettingsScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Image.asset('assets/vizventory-logo.png', height: 88, fit: BoxFit.contain),
+        Image.asset(
+          'assets/vizventory-logo.png',
+          height: 88,
+          fit: BoxFit.contain,
+        ),
         const SizedBox(height: 16),
-        FilledButton.icon(onPressed: onScanQr, icon: const Icon(Icons.qr_code_scanner), label: const Text('Connect Camera Device')),
+        FilledButton.icon(
+          onPressed: onScanQr,
+          icon: const Icon(Icons.qr_code_scanner),
+          label: const Text('Connect Camera Device'),
+        ),
         const SizedBox(height: 12),
-        TextField(controller: serverController, decoration: const InputDecoration(labelText: 'Desktop server', hintText: 'http://192.168.1.20:4174')),
+        TextField(
+          controller: serverController,
+          decoration: const InputDecoration(
+            labelText: 'Desktop server',
+            hintText: 'http://192.168.1.20:4174',
+          ),
+        ),
         const SizedBox(height: 10),
-        OutlinedButton.icon(onPressed: () => onSaveServer(serverController.text), icon: const Icon(Icons.link), label: const Text('Save Server')),
+        OutlinedButton.icon(
+          onPressed: () => onSaveServer(serverController.text),
+          icon: const Icon(Icons.link),
+          label: const Text('Save Server'),
+        ),
         if (recentServers.isNotEmpty) ...[
           const SizedBox(height: 18),
-          Text('Remembered desktops', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Remembered desktops',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           for (final server in recentServers)
             ListTile(
@@ -647,37 +1081,67 @@ class _QrScannerPageState extends State<QrScannerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
-      body: Stack(children: [
-        MobileScanner(onDetect: _handleDetect),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            width: double.infinity,
-            color: Colors.black.withValues(alpha: 0.68),
-            padding: const EdgeInsets.all(18),
-            child: const Text('Point this device at the QR or barcode.', style: TextStyle(color: Colors.white, fontSize: 16), textAlign: TextAlign.center),
+      body: Stack(
+        children: [
+          MobileScanner(onDetect: _handleDetect),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              width: double.infinity,
+              color: Colors.black.withValues(alpha: 0.68),
+              padding: const EdgeInsets.all(18),
+              child: const Text(
+                'Point this device at the QR or barcode.',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
 
 class InventoryCard extends StatelessWidget {
-  const InventoryCard({super.key, required this.item, required this.serverBase});
+  const InventoryCard({
+    super.key,
+    required this.item,
+    required this.serverBase,
+  });
   final InventoryItem item;
   final String serverBase;
 
   @override
   Widget build(BuildContext context) {
-    final photo = item.photos.isNotEmpty ? '$serverBase${item.photos.first}' : '';
+    final firstPhoto = item.photos.isNotEmpty ? item.photos.first : '';
+    final photo = firstPhoto.startsWith('http')
+        ? firstPhoto
+        : firstPhoto.isEmpty
+        ? ''
+        : '$serverBase$firstPhoto';
     return Card(
       child: ListTile(
         leading: photo.isEmpty
             ? const CircleAvatar(child: Icon(Icons.inventory_2_outlined))
-            : ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.network(photo, width: 56, height: 56, fit: BoxFit.cover)),
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.network(
+                  photo,
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                ),
+              ),
         title: Text(item.title),
-        subtitle: Text([item.id, item.category, item.location].where((part) => part.isNotEmpty).join(' • ')),
+        subtitle: Text(
+          [
+            item.id,
+            item.category,
+            item.subcategory,
+            item.location,
+          ].where((part) => part.isNotEmpty).join(' | '),
+        ),
         trailing: Chip(label: Text(item.status)),
       ),
     );
@@ -685,30 +1149,65 @@ class InventoryCard extends StatelessWidget {
 }
 
 class ImagePickerPanel extends StatelessWidget {
-  const ImagePickerPanel({super.key, required this.photoBytes, required this.onCamera, required this.onGallery});
+  const ImagePickerPanel({
+    super.key,
+    required this.photoBytes,
+    required this.onCamera,
+    required this.onGallery,
+  });
   final Uint8List? photoBytes;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      AspectRatio(
-        aspectRatio: 4 / 3,
-        child: DecoratedBox(
-          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black12), borderRadius: BorderRadius.circular(8)),
-          child: photoBytes == null
-              ? const Center(child: Icon(Icons.add_a_photo_outlined, size: 56, color: Colors.black38))
-              : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(photoBytes!, fit: BoxFit.cover)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AspectRatio(
+          aspectRatio: 4 / 3,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.black12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: photoBytes == null
+                ? const Center(
+                    child: Icon(
+                      Icons.add_a_photo_outlined,
+                      size: 56,
+                      color: Colors.black38,
+                    ),
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(photoBytes!, fit: BoxFit.cover),
+                  ),
+          ),
         ),
-      ),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: FilledButton.icon(onPressed: onCamera, icon: const Icon(Icons.photo_camera), label: const Text('Camera'))),
-        const SizedBox(width: 10),
-        Expanded(child: OutlinedButton.icon(onPressed: onGallery, icon: const Icon(Icons.photo_library), label: const Text('Photos'))),
-      ]),
-    ]);
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: onCamera,
+                icon: const Icon(Icons.photo_camera),
+                label: const Text('Camera'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onGallery,
+                icon: const Icon(Icons.photo_library),
+                label: const Text('Photos'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -717,9 +1216,13 @@ class EmptyState extends StatelessWidget {
   final String message;
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    ),
+  );
 }
