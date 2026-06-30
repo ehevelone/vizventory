@@ -120,6 +120,10 @@ AI should attempt to identify:
 
 ## Permissions
 
+Vizventory is multi-tenant by organization/account. Inventory data must always belong to an organization, and API endpoints must filter by organization before returning items, photos, history, or reports.
+
+Supabase Auth should handle logins. Vizventory stores app-level user details in `profiles`, account/team ownership in `organizations`, and user access in `organization_memberships`.
+
 Future roles:
 
 - Admin

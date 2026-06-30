@@ -417,6 +417,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final _searchController = TextEditingController();
   List<InventoryItem> _items = [];
   bool _loading = false;
+  String _loadError = '';
 
   @override
   void initState() {
@@ -450,9 +451,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _items = (data['items'] as List? ?? [])
             .map((item) => InventoryItem.fromJson(item))
             .toList();
+        _loadError = '';
       });
     } catch (error) {
-      widget.onMessage('Inventory load failed: ${friendlyApiError(error)}');
+      final message = friendlyApiError(error);
+      setState(() => _loadError = message);
+      widget.onMessage('Inventory load failed: $message');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -495,7 +499,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
           if (_loading) const LinearProgressIndicator(),
           for (final item in visible)
             InventoryCard(item: item, serverBase: widget.serverBase),
-          if (!_loading && visible.isEmpty)
+          if (!_loading && _loadError.isNotEmpty)
+            EmptyState(
+              message:
+                  'Could not load inventory from ${widget.serverBase}. Check Settings, then pull down to retry.',
+            ),
+          if (!_loading && _loadError.isEmpty && visible.isEmpty)
             EmptyState(
               message: query.isEmpty
                   ? 'No inventory yet. Tap Add to take a picture and create your first item.'
