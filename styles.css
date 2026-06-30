@@ -108,7 +108,7 @@ h2 {
 .layout {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(280px, 380px) minmax(260px, 340px) 1fr;
+  grid-template-columns: minmax(520px, 1.35fr) minmax(320px, 0.65fr);
   padding: 18px clamp(16px, 4vw, 40px) 32px;
 }
 
@@ -146,6 +146,7 @@ form,
 .scanner-panel {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .compact-title h3 {
@@ -184,6 +185,7 @@ label {
   font-size: 13px;
   font-weight: 700;
   gap: 6px;
+  min-width: 0;
 }
 
 input,
@@ -205,7 +207,7 @@ textarea {
 .grid-two {
   display: grid;
   gap: 12px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .primary {
@@ -276,6 +278,19 @@ textarea {
   min-height: 42px;
   padding: 10px 12px;
   white-space: nowrap;
+}
+
+.photo-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.photo-actions button {
+  flex: 1 1 160px;
+}
+
+#classifyPhotoBtn {
+  flex-basis: 130px;
 }
 
 .photo-preview {
@@ -511,7 +526,13 @@ textarea {
 
 @media (max-width: 1080px) {
   .layout {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
   }
 }
 

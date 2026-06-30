@@ -67,6 +67,20 @@ The website is static. Browser and mobile requests go to `/api/...`, and Netlify
 
 The next production step is replacing the temporary local JSON/photo store with Supabase Postgres and Supabase Storage.
 
+## Supabase
+
+Run `supabase/schema.sql` in the Supabase SQL editor, then add these Netlify environment variables:
+
+```text
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_STORAGE_BUCKET=item-photos
+```
+
+When those variables are present, inventory items are stored in Supabase Postgres and item photos are stored in Supabase Storage. Without them, local development falls back to the temporary JSON/photo store.
+
+The schema also creates `categories` and `subcategories`, including a clothing category with clothing-specific subcategories. The Add Item form loads those lists from `/api/categories`.
+
 ## Phone Capture
 
 In the desktop app:

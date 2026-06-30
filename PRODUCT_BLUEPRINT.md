@@ -14,6 +14,44 @@ The product should support:
 - Multi-user staff workflows
 - A future App Store and Play Store capture app without rebuilding the core system
 
+See `PRODUCT_DECISIONS.md` for the product playbook.
+
+## Product Principles
+
+- Everything starts with a picture.
+- AI does the typing.
+- QR connects the physical and digital worlds.
+- Inventory should take seconds, not minutes.
+- Simplicity wins.
+
+## Item Lifecycle
+
+```text
+Created
+AI Identified
+Label Printed
+In Inventory
+Reserved
+Checked Out / Sold / Donated
+Archived
+```
+
+`Reserved` is optional. The outbound status should fit the organization type.
+
+## Smart Intake Direction
+
+The long-term intake flow is camera-first:
+
+```text
+Scan Item
+Take picture
+AI identifies item
+Review suggestion
+Save and print label
+```
+
+Forms are review/correction surfaces, not the desired starting point.
+
 ## Product Shape
 
 ### 1. Web Admin App
@@ -101,6 +139,8 @@ Core tables/entities:
 - `items`
 - `item_photos`
 - `item_events`
+- `categories`
+- `subcategories`
 - `locations`
 - `label_batches`
 - `phone_sessions`
@@ -111,12 +151,20 @@ Important fields for `items`:
 - `organization_id`
 - `item_code`
 - `title`
+- `description`
 - `category`
+- `subcategory`
+- `brand`
+- `model`
 - `size`
 - `color`
+- `material`
 - `condition`
+- `quantity`
 - `location_id`
+- `owner`
 - `status`
+- `qr_id`
 - `tags`
 - `notes`
 - `created_by`

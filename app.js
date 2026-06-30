@@ -1,5 +1,6 @@
 const state = {
   items: [],
+  categories: [],
   stream: null,
   scanTimer: null,
   photoStream: null,
@@ -16,6 +17,8 @@ const state = {
 const els = {
   form: document.querySelector("#itemForm"),
   clearFormBtn: document.querySelector("#clearFormBtn"),
+  category: document.querySelector("#category"),
+  subcategory: document.querySelector("#subcategory"),
   photos: document.querySelector("#photos"),
   connectPhoneBtn: document.querySelector("#connectPhoneBtn"),
   openPhotoPickerBtn: document.querySelector("#openPhotoPickerBtn"),
@@ -62,6 +65,20 @@ const els = {
 };
 
 const settingsKey = "vizventoryCameraSettings";
+
+const defaultCategories = [
+  { name: "Clothing", subcategories: ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Bags", "Jewelry", "Kids", "Other Clothing"] },
+  { name: "Equipment", subcategories: ["Office Equipment", "Medical Equipment", "Audio/Visual", "Field Equipment", "Other Equipment"] },
+  { name: "Tool", subcategories: ["Hand Tools", "Power Tools", "Tool Sets", "Measuring Tools"] },
+  { name: "Electronics", subcategories: ["Computers", "Phones/Tablets", "Cameras", "Cables/Adapters"] },
+  { name: "Furniture", subcategories: ["Desk/Table", "Chair/Seating", "Shelf/Storage"] },
+  { name: "Supply", subcategories: ["Office Supplies", "Cleaning Supplies", "Packaging Supplies"] },
+  { name: "Document", subcategories: ["Forms", "Manuals", "Records"] },
+  { name: "Artwork", subcategories: [] },
+  { name: "Part", subcategories: [] },
+  { name: "Container", subcategories: ["Box", "Bin/Tote", "Case"] },
+  { name: "Other", subcategories: [] }
+];
 
 const code39 = {
   "0": "101001101101",
@@ -301,6 +318,35 @@ async function loadItems() {
   render();
 }
 
+function setCategoryOptions(categories) {
+  state.categories = categories;
+  els.category.innerHTML = `<option value="">Select</option>${categories
+    .map((category) => `<option>${escapeHtml(category.name)}</option>`)
+    .join("")}`;
+  renderSubcategoryOptions();
+}
+
+function renderSubcategoryOptions(selectedValue = "") {
+  const category = state.categories.find((entry) => entry.name === els.category.value);
+  const subcategories = category?.subcategories || [];
+  els.subcategory.disabled = !subcategories.length;
+  els.subcategory.innerHTML = `<option value="">${subcategories.length ? "Select" : "None"}</option>${subcategories
+    .map((name) => `<option>${escapeHtml(name)}</option>`)
+    .join("")}`;
+  if (selectedValue && subcategories.includes(selectedValue)) {
+    els.subcategory.value = selectedValue;
+  }
+}
+
+async function loadCategories() {
+  try {
+    const data = await api("/api/categories");
+    setCategoryOptions(data.categories?.length ? data.categories : defaultCategories);
+  } catch {
+    setCategoryOptions(defaultCategories);
+  }
+}
+
 function renderBarcode(svg, rawValue) {
   const value = `*${String(rawValue).toUpperCase()}*`;
   const moduleWidth = 2;
@@ -339,6 +385,7 @@ function itemMatches(item) {
     item.id,
     item.title,
     item.category,
+    item.subcategory,
     item.size,
     item.color,
     item.condition,
@@ -368,6 +415,7 @@ function render() {
     node.querySelector("h3").textContent = item.title;
     node.querySelector(".item-meta").textContent = [
       item.category,
+      item.subcategory,
       item.size && `Size ${item.size}`,
       item.color,
       item.condition,
@@ -391,6 +439,7 @@ function formDataToObject() {
   return {
     title: document.querySelector("#title").value,
     category: document.querySelector("#category").value,
+    subcategory: document.querySelector("#subcategory").value,
     size: document.querySelector("#size").value,
     color: document.querySelector("#color").value,
     condition: document.querySelector("#condition").value,
@@ -405,9 +454,19 @@ function setFormValue(selector, value) {
   if (field && value) field.value = value;
 }
 
+function ensureOption(select, value) {
+  if (!select || !value) return;
+  const exists = [...select.options].some((option) => option.value === value);
+  if (!exists) select.appendChild(new Option(value, value));
+}
+
 function applySuggestion(suggestion) {
   setFormValue("#title", suggestion.title);
+  ensureOption(els.category, suggestion.category);
   setFormValue("#category", suggestion.category);
+  renderSubcategoryOptions(suggestion.subcategory);
+  ensureOption(els.subcategory, suggestion.subcategory);
+  setFormValue("#subcategory", suggestion.subcategory);
   setFormValue("#size", suggestion.size);
   setFormValue("#color", suggestion.color);
   setFormValue("#condition", suggestion.condition);
@@ -480,7 +539,7 @@ function labelMarkup(item) {
       <strong>${escapeHtml(item.id)}</strong>
       <svg class="barcode" role="img"></svg>
       <span>${escapeHtml(item.title)}</span>
-      <span>${escapeHtml([item.category, item.size, item.color].filter(Boolean).join(" | "))}</span>
+      <span>${escapeHtml([item.category, item.subcategory, item.size, item.color].filter(Boolean).join(" | "))}</span>
     </div>
   `;
 }
@@ -606,6 +665,7 @@ els.clearFormBtn.addEventListener("click", () => {
   renderPhotoPreview();
 });
 els.photos.addEventListener("change", renderPhotoPreview);
+els.category.addEventListener("change", () => renderSubcategoryOptions());
 els.connectPhoneBtn.addEventListener("click", () => startPhoneSession().catch((error) => {
   els.phoneConnectStatus.textContent = error.message;
 }));
@@ -684,6 +744,6 @@ loadCameraSettings();
 refreshCameraDevices().catch(() => {
   els.cameraSettingsNote.textContent = "Camera list will appear after browser permission is granted.";
 });
-loadItems().catch((error) => {
+loadCategories().then(() => loadItems()).catch((error) => {
   els.inventoryList.innerHTML = `<p class="item-notes">${escapeHtml(error.message)}</p>`;
 });
