@@ -803,6 +803,13 @@ els.toggleAuthModeBtn.addEventListener("click", () => setAuthMode(state.authMode
 els.signOutBtn.addEventListener("click", () => {
   clearAuth();
   state.items = [];
+  state.categories = [];
+  state.capturedPhotos = [];
+  els.form.reset();
+  els.availableCount.textContent = "0";
+  els.checkedOutCount.textContent = "0";
+  els.inventoryList.innerHTML = "";
+  renderPhotoPreview();
   render();
   setAuthMode("login");
   showAuth("Signed out.");
